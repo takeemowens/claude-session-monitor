@@ -1055,9 +1055,9 @@ function updateTrayTitle() {
   tray.setImage(buildTrayIcon(pct))
   tray.setTitle('')
   if (pct != null) {
-    tray.setToolTip(`Claude Usage · Session ${pct}%`)
+    tray.setToolTip(`Claude Session Monitor · Session ${pct}%`)
   } else {
-    tray.setToolTip('Claude Usage')
+    tray.setToolTip('Claude Session Monitor')
   }
 }
 
@@ -1103,15 +1103,15 @@ function rebuildTrayMenu() {
       showAuthScreen()
     }}] : []),
     { type: 'separator' },
-    { label: 'Quit Claude Usage', click: () => app.quit() }
+    { label: 'Quit Claude Session Monitor', click: () => app.quit() }
   ]))
 }
 
 function createTray() {
   tray = new Tray(buildTrayIcon(null))
-  tray.setToolTip('Claude Usage')
+  tray.setToolTip('Claude Session Monitor')
   rebuildTrayMenu()
-  tray.on('click', toggleVisibility)
+  // tray click intentionally does nothing — use the right-click menu to show/hide
 }
 
 // ─── Global hotkey (Option+Space) ─────────────────────────────────────────────
