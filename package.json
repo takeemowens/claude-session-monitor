@@ -1,0 +1,50 @@
+{
+  "name": "claude-usage-widget",
+  "version": "1.0.0",
+  "description": "macOS desktop widget for monitoring Anthropic/Claude usage",
+  "main": "main.js",
+  "author": "takeem",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac",
+    "build:arm64": "electron-builder --mac --arm64",
+    "build:x64": "electron-builder --mac --x64",
+    "build:universal": "electron-builder --mac --universal"
+  },
+  "build": {
+    "appId": "com.takeem.claude-usage-widget",
+    "productName": "Claude Usage Widget",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "usage_config.json",
+      "package.json"
+    ],
+    "extraResources": [],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "assets/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Claude Usage Widget",
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}
