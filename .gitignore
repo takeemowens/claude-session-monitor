@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+build/
+
+# macOS artifacts
+*.dmg
+*.pkg
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Electron build cache
+.cache/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+
+# Auth — stored in ~/.claude-widget/auth.json (outside project), never committed
+# usage_config.json is safe (no secrets), kept as reference template
