@@ -904,10 +904,11 @@ async function refreshAndPush() {
       console.log('[refresh] Console scrape successful')
     }
 
-    // Also fetch API rate limits if we have an API key
+    // Also fetch API rate limits — throttled to every 5 min (costs real tokens)
     const apiKey = getStoredKey()
-    if (apiKey) {
+    if (apiKey && (Date.now() - lastApiPing >= API_PING_INTERVAL)) {
       const apiLive = await fetchLiveData(apiKey)
+      lastApiPing = Date.now()
       // API data fills in what console didn't provide
       if (apiLive.session && !live.session) live.session = apiLive.session
       if (apiLive.rate_limits) live.rate_limits = apiLive.rate_limits
@@ -929,7 +930,9 @@ async function refreshAndPush() {
 }
 
 // ─── Auto-refresh timer ───────────────────────────────────────────────────────
-const REFRESH_INTERVAL = 5 * 60 * 1000   // 5 minutes
+const REFRESH_INTERVAL  = 60 * 1000        // 1 min — console scrape cadence
+const API_PING_INTERVAL = 5 * 60 * 1000    // 5 min — Anthropic API (costs tokens)
+let lastApiPing = 0
 let refreshTimer = null
 let refreshLock = false
 

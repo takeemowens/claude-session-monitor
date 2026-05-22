@@ -152,6 +152,28 @@ function renderDashboard(data) {
   renderFooter(data.balance, data.last_updated)
 }
 
+// ─── Per-second countdown tick (free — no network) ───────────────────────────
+let _tickIso = null
+let _tickTimer = null
+
+function startResetTick(isoStr) {
+  _tickIso = isoStr
+  if (_tickTimer) return   // already running; just updating _tickIso is enough
+  _tickTimer = setInterval(() => {
+    if (!_tickIso) return
+    const target = new Date(_tickIso)
+    const diffMs = Math.max(0, target - Date.now())
+    if (diffMs === 0) { _tickIso = null; return }
+    const h = Math.floor(diffMs / 3600000)
+    const m = Math.floor((diffMs % 3600000) / 60000)
+    const s = Math.floor((diffMs % 60000) / 1000)
+    const exact = formatExactTime(target)
+    const countdown = h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`
+    const el = document.getElementById('session-reset')
+    if (el) el.textContent = exact ? `${countdown} · ${exact}` : countdown
+  }, 1000)
+}
+
 function formatExactTime(target) {
   if (!target || isNaN(target)) return ''
   const dd   = String(target.getDate()).padStart(2, '0')
@@ -209,6 +231,9 @@ function renderSession(s) {
   else if (countdown)     label = `Resets in ${countdown}`
   else if (exact)         label = exact
   document.getElementById('session-reset').textContent = label
+
+  // Kick off per-second tick if we have an exact reset time
+  if (s.reset_iso) startResetTick(s.reset_iso)
 }
 
 function renderWeekly(w) {
