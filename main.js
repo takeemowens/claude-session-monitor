@@ -1064,47 +1064,77 @@ function updateTrayTitle() {
   }
 }
 
+function buildSessionStatusLabel(data) {
+  const s = data?.session
+  if (!s) return 'Session — · —'
+  const pct = s.used_percent ?? '—'
+  const h = s.resets_in_hours ?? 0
+  const m = s.resets_in_minutes ?? 0
+  const countdown = h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m` : '—'
+  return `Session ${pct}% · Resets ${countdown}`
+}
+
+function buildWeeklyStatusLabel(data) {
+  const w = data?.weekly
+  if (!w) return 'Weekly — · —'
+  const pct = w.used_percent ?? '—'
+  let resetPart = '—'
+  if (w.reset_label) {
+    resetPart = w.reset_label.replace(/^Resets\s+/, '')
+  } else if (w.reset_day && w.reset_time) {
+    resetPart = `${w.reset_day} ${w.reset_time}`
+  }
+  return `Weekly ${pct}% · Resets ${resetPart}`
+}
+
 function rebuildTrayMenu() {
   if (!tray || !win) return
-  const loginItem    = app.getLoginItemSettings()
-  const isAuthed     = !!getStoredKey()
+  const loginItem = app.getLoginItemSettings()
+  const isAuthed  = !!getStoredKey()
   tray.setContextMenu(Menu.buildFromTemplate([
+    { label: buildSessionStatusLabel(latestData), click: () => {} },
+    { label: buildWeeklyStatusLabel(latestData),  click: () => {} },
+    { type: 'separator' },
     { label: win.isVisible() ? 'Hide Widget' : 'Show Widget', click: toggleVisibility },
-    { label: 'Always on Top', type: 'checkbox', checked: win.isAlwaysOnTop(),
-      click: () => { win.setAlwaysOnTop(!win.isAlwaysOnTop()); rebuildTrayMenu() } },
-    { label: 'Launch at Login', type: 'checkbox', checked: loginItem.openAtLogin,
-      click: () => {
-        app.setLoginItemSettings({ openAtLogin: !loginItem.openAtLogin, openAsHidden: true })
-        rebuildTrayMenu()
-      }
+    {
+      label: 'Settings',
+      submenu: [
+        { label: 'Always on Top', type: 'checkbox', checked: win.isAlwaysOnTop(),
+          click: () => { win.setAlwaysOnTop(!win.isAlwaysOnTop()); rebuildTrayMenu() } },
+        { label: 'Launch at Login', type: 'checkbox', checked: loginItem.openAtLogin,
+          click: () => {
+            app.setLoginItemSettings({ openAtLogin: !loginItem.openAtLogin, openAsHidden: true })
+            rebuildTrayMenu()
+          }
+        },
+        { label: 'Mute Notifications', type: 'checkbox', checked: muteNotifications,
+          click: () => { muteNotifications = !muteNotifications; rebuildTrayMenu() }
+        },
+        { type: 'separator' },
+        { label: 'Refresh Now', click: () => refreshAndPush() },
+        { label: isLoggedInToConsole ? 'Claude.ai Connected ✓' : 'Sign in to Claude.ai…',
+          click: () => { if (!isLoggedInToConsole) openConsoleLogin() } },
+        { label: 'Import from Chrome',
+          click: async () => {
+            const ok = await importChromeSession()
+            if (ok) {
+              isLoggedInToConsole = true
+              rebuildTrayMenu()
+              startRefreshTimer()
+              await refreshAndPush()
+            }
+          }
+        },
+        { label: 'Open Config File', click: () => shell.openPath(path.join(__dirname, 'usage_config.json')) },
+      ]
     },
-    { label: 'Mute Notifications', type: 'checkbox', checked: muteNotifications,
-      click: () => { muteNotifications = !muteNotifications; rebuildTrayMenu() }
+    {
+      label: 'Account',
+      submenu: [
+        { label: 'Change API Key…', click: () => showAuthScreen() },
+        ...(isAuthed ? [{ label: 'Sign Out', click: () => { stopRefreshTimer(); clearKey(); showAuthScreen() } }] : []),
+      ]
     },
-    { type: 'separator' },
-    { label: 'Refresh Data',     click: () => refreshAndPush() },
-    { label: isLoggedInToConsole ? 'Claude.ai Connected' : 'Sign in to Claude.ai…',
-      click: () => { if (!isLoggedInToConsole) openConsoleLogin() },
-      enabled: !isLoggedInToConsole },
-    { label: 'Import session from Chrome',
-      click: async () => {
-        const ok = await importChromeSession()
-        if (ok) {
-          isLoggedInToConsole = true
-          rebuildTrayMenu()
-          startRefreshTimer()
-          await refreshAndPush()
-        }
-      },
-      visible: !isLoggedInToConsole },
-    { label: 'Open Config File', click: () => shell.openPath(path.join(__dirname, 'usage_config.json')) },
-    { type: 'separator' },
-    { label: 'Change API Key…',  click: () => showAuthScreen() },
-    ...(isAuthed ? [{ label: 'Sign Out', click: () => {
-      stopRefreshTimer()
-      clearKey()
-      showAuthScreen()
-    }}] : []),
     { type: 'separator' },
     { label: 'Quit Claude Session Monitor', click: () => app.quit() }
   ]))
