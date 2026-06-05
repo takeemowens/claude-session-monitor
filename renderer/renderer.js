@@ -27,6 +27,12 @@ function measureDashboardHeight() {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  // Show app version in footer
+  window.electronAPI.getVersion().then(v => {
+    const el = document.getElementById('app-version')
+    if (el) el.textContent = `v${v}`
+  }).catch(() => {})
+
   const authState = await window.electronAPI.getAuthState()
 
   if (authState.authenticated) {

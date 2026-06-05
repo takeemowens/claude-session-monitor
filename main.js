@@ -2,6 +2,27 @@ const { app, BrowserWindow, ipcMain, screen, safeStorage, shell, Tray, Menu, nat
 const path = require('path')
 const fs = require('fs')
 
+// Set app name BEFORE app.ready so safeStorage uses the same identity
+// in both dev (npm start) and production (built .app). Must match productName
+// in package.json — this is what macOS Keychain keys the encryption against.
+app.setName('Claude Usage Widget')
+
+// ─── Single instance lock ─────────────────────────────────────────────────────
+// If a second copy tries to launch, focus the existing window and quit the new one.
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  console.log('[single-instance] Another instance is already running — quitting.')
+  app.quit()
+  process.exit(0)
+}
+app.on('second-instance', () => {
+  // Someone tried to open a second instance — bring the existing window to front
+  if (typeof win !== 'undefined' && win && !win.isDestroyed()) {
+    if (!win.isVisible()) win.show()
+    win.focus()
+  }
+})
+
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandled rejection]', reason)
 })
@@ -13,12 +34,22 @@ const sandboxBridge = !app.isPackaged ? require('./sandbox-bridge') : null
 const AUTH_DIR  = path.join(os.homedir(), '.claude-widget')
 const AUTH_PATH = path.join(AUTH_DIR, 'auth.json')
 
+// In dev mode (unsigned Electron), safeStorage generates a new OS key each launch,
+// so encrypt-on-save / decrypt-on-next-launch always fails. Fall back to plain file
+// storage (protected by 0o600 permissions) when not packaged.
+const USE_SAFE_STORAGE = app.isPackaged && safeStorage.isEncryptionAvailable()
+
 function getStoredKey() {
   try {
     if (!fs.existsSync(AUTH_PATH)) return null
     const stored = JSON.parse(fs.readFileSync(AUTH_PATH, 'utf8'))
-    const raw = Buffer.from(stored.key, 'base64')
-    return safeStorage.decryptString(raw)
+    if (USE_SAFE_STORAGE) {
+      const raw = Buffer.from(stored.key, 'base64')
+      return safeStorage.decryptString(raw)
+    } else {
+      // Dev mode: key stored as plain base64
+      return Buffer.from(stored.key, 'base64').toString('utf8')
+    }
   } catch (e) {
     console.error('[auth] Failed to read stored key:', e.message)
     return null
@@ -27,8 +58,14 @@ function getStoredKey() {
 
 function storeKey(apiKey) {
   if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true, mode: 0o700 })
-  const encrypted = safeStorage.encryptString(apiKey)
-  fs.writeFileSync(AUTH_PATH, JSON.stringify({ key: encrypted.toString('base64') }), { mode: 0o600 })
+  let keyData
+  if (USE_SAFE_STORAGE) {
+    keyData = safeStorage.encryptString(apiKey).toString('base64')
+  } else {
+    // Dev mode: plain base64 (file is 0o600 — only readable by owner)
+    keyData = Buffer.from(apiKey, 'utf8').toString('base64')
+  }
+  fs.writeFileSync(AUTH_PATH, JSON.stringify({ key: keyData, dev: !USE_SAFE_STORAGE }), { mode: 0o600 })
 }
 
 function clearKey() {
@@ -83,18 +120,21 @@ const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/5
 function createScrapeWindow(visible = false) {
   if (scrapeWin && !scrapeWin.isDestroyed()) scrapeWin.close()
   scrapeWin = new BrowserWindow({
-    width: 460,
-    height: 650,
+    width: 1280,
+    height: 800,
     show: visible,
     title: 'Sign in to Claude',
     webPreferences: {
       session: getConsoleSession(),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true
+      sandbox: true,
+      backgroundThrottling: false   // prevent JS timer throttling in hidden windows
     }
   })
   scrapeWin.webContents.setUserAgent(CHROME_UA)
+  // Focus the webContents so React renders the full page (not just sidebar shell)
+  scrapeWin.webContents.focus()
   return scrapeWin
 }
 
@@ -297,174 +337,134 @@ function onLoginSuccess(loginWin) {
 
 // Scrape usage data from the console page
 async function scrapeConsoleUsage() {
-  return new Promise((resolve) => {
-    const sw = createScrapeWindow(false)
-    let resolved = false
+  // Use session.fetch() with stored cookies — no hidden BrowserWindow needed.
+  // The sessionKey cookie from Claude.ai authenticates these requests directly.
+  const ses = getConsoleSession()
+  const BASE = 'https://claude.ai'
+  const HEADERS = {
+    'accept': 'application/json',
+    'content-type': 'application/json',
+    'referer': 'https://claude.ai/',
+  }
 
-    const finish = (data) => {
-      if (resolved) return
-      resolved = true
-      resolve(data)
-    }
-
-    sw.webContents.on('did-finish-load', async () => {
-      const url = sw.webContents.getURL()
-
-      // If redirected to login, session has expired
-      if (url.includes('login') || url.includes('oauth')) {
+  try {
+    // 1. Get the current user/org context
+    const bootstrapRes = await ses.fetch(`${BASE}/api/bootstrap`, { headers: HEADERS })
+    if (!bootstrapRes.ok) {
+      if (bootstrapRes.status === 401 || bootstrapRes.status === 403) {
+        // Session expired
         const wasLoggedIn = isLoggedInToConsole
         isLoggedInToConsole = false
         rebuildTrayMenu()
-        // Stop the timer if there's no API key either — nothing to refresh
         if (!getStoredKey()) stopRefreshTimer()
-        console.log('[scraper] Session expired — redirected to login')
-        // Notify once when session drops
+        console.log('[scraper] Session expired (401/403)')
         if (wasLoggedIn && Notification.isSupported()) {
           new Notification({
             title: 'Claude session expired',
-            body: 'Sign into claude.ai in Chrome, then restart the widget to reconnect.',
+            body: 'Sign into claude.ai in Chrome, then use Account → Import from Chrome.',
             silent: false
           }).show()
         }
-        finish(null)
-        return
+      } else {
+        console.log('[scraper] Bootstrap failed:', bootstrapRes.status)
       }
+      return null
+    }
 
-      // Wait for React to render
-      await new Promise(r => setTimeout(r, 3000))
+    const bootstrap = await bootstrapRes.json()
+    const orgId = bootstrap?.account?.memberships?.[0]?.organization?.uuid
+      || bootstrap?.organization?.uuid
+      || bootstrap?.organizations?.[0]?.uuid
 
-      try {
-        const data = await sw.webContents.executeJavaScript(`
-          (function() {
-            const result = { source: 'console_scrape', ts: new Date().toISOString() }
-            const text = document.body.innerText
+    if (!orgId) {
+      console.log('[scraper] Could not find org ID in bootstrap:', JSON.stringify(bootstrap).slice(0, 200))
+      return null
+    }
+    // Get the account org ID (may differ from bootstrap org ID)
+    const accountRes = await ses.fetch(`${BASE}/api/account`, { headers: HEADERS })
+    const accountData = accountRes.ok ? await accountRes.json() : null
+    const accountOrgId = accountData?.memberships?.[0]?.organization?.uuid
 
-            // Look for usage patterns in the page text
-            // Claude.ai shows things like "X% of limit used" or usage bars
-            const allText = document.body.innerText
-
-            // Try to find percentage patterns
-            const pctMatches = allText.match(/(\\d+(?:\\.\\d+)?)\\s*%/g)
-            if (pctMatches) result.percentages = pctMatches.map(p => parseFloat(p))
-
-            // Try to find dollar amounts
-            const dollarMatches = allText.match(/\\$([\\d,]+\\.?\\d*)/g)
-            if (dollarMatches) result.dollars = dollarMatches.map(d => parseFloat(d.replace(/[\\$,]/g, '')))
-
-            // Try to find token counts
-            const tokenMatches = allText.match(/([\\d,]+\\.?\\d*)\\s*(?:tokens?|[KMB]\\s*tokens?)/gi)
-            if (tokenMatches) result.tokens = tokenMatches
-
-            // Try to extract structured data from specific elements
-            // Look for progress bars
-            const bars = document.querySelectorAll('[role="progressbar"], [class*="progress"], [class*="usage"]')
-            result.progressBars = Array.from(bars).map(b => ({
-              value: b.getAttribute('aria-valuenow') || b.style?.width || '',
-              label: b.closest('[class*="section"]')?.innerText?.slice(0, 100) || ''
-            }))
-
-            // Get all heading-like text near numbers for context
-            const sections = []
-            document.querySelectorAll('h1, h2, h3, h4, h5, h6, [class*="heading"], [class*="title"], [class*="label"]').forEach(el => {
-              const next = el.nextElementSibling
-              if (next) {
-                sections.push({
-                  heading: el.innerText.trim().slice(0, 80),
-                  content: next.innerText.trim().slice(0, 200)
-                })
-              }
-            })
-            result.sections = sections
-
-            // Grab the raw page text (truncated) for parsing
-            result.rawText = allText.slice(0, 3000)
-
-            return JSON.stringify(result)
-          })()
-        `)
-
-        const parsed = JSON.parse(data)
-        // Data received — don't log sensitive usage info
-        finish(parsed)
-      } catch (err) {
-        console.log('[scraper] Error:', err.message)
-        finish(null)
+    // Fetch usage data — /api/organizations/${accountOrgId}/usage returns session + weekly utilization
+    let usageBody = null
+    for (const oid of [...new Set([accountOrgId, orgId].filter(Boolean))]) {
+      const r = await ses.fetch(`${BASE}/api/organizations/${oid}/usage`, { headers: HEADERS })
+      if (r.ok) {
+        usageBody = await r.json()
+        console.log('[scraper] Usage data fetched successfully')
+        break
       }
-    })
+    }
 
-    // Timeout after 15s
-    setTimeout(() => finish(null), 15000)
+    const result = {
+      source: 'session_fetch',
+      ts: new Date().toISOString(),
+      orgId,
+      usage: usageBody,
+      raw: bootstrap
+    }
 
-    sw.loadURL(CONSOLE_USAGE_URL)
-  })
+    // Cache for debugging
+    try {
+      const cachePath = require('path').join(AUTH_DIR, 'console_cache.json')
+      require('fs').writeFileSync(cachePath, JSON.stringify(result, null, 2))
+    } catch (e) {}
+
+    return result
+  } catch (e) {
+    console.log('[scraper] session.fetch error:', e.message)
+    return null
+  }
 }
 
-// Parse scraped data into widget format
+// Parse scraped data (from /api/organizations/{id}/usage) into widget format
 function parseScrapedData(scraped) {
   if (!scraped) return {}
   const result = {}
+  const u = scraped.usage   // the /usage JSON response
+  const ts = scraped.ts
 
-  // Extract session/usage percentages from the raw text
-  const raw = scraped.rawText || ''
-
-  // Look for "X% of daily/session limit" patterns
-  const sessionMatch = raw.match(/(\d+(?:\.\d+)?)\s*%.*?(?:session|minute|current)/i)
-    || raw.match(/(?:session|current).*?(\d+(?:\.\d+)?)\s*%/i)
-  if (sessionMatch) {
-    result.session = { used_percent: parseFloat(sessionMatch[1]) }
-  }
-
-  // Look for daily usage
-  const dailyMatch = raw.match(/(\d+(?:\.\d+)?)\s*%.*?(?:daily|today)/i)
-    || raw.match(/(?:daily|today).*?(\d+(?:\.\d+)?)\s*%/i)
-  if (dailyMatch) {
-    result.daily_tokens = { used_percent: parseFloat(dailyMatch[1]) }
-  }
-
-  // Look for weekly usage
-  const weeklyMatch = raw.match(/(\d+(?:\.\d+)?)\s*%.*?(?:weekly|week)/i)
-    || raw.match(/(?:weekly|week).*?(\d+(?:\.\d+)?)\s*%/i)
-  if (weeklyMatch) {
-    result.weekly = { used_percent: parseFloat(weeklyMatch[1]) }
-  }
-
-  // Use progress bar values as fallback
-  if (scraped.progressBars && scraped.progressBars.length > 0) {
-    scraped.progressBars.forEach((bar, i) => {
-      const val = parseFloat(bar.value) || 0
-      if (val > 0) {
-        if (i === 0 && !result.session) result.session = { used_percent: val }
-        else if (i === 1 && !result.weekly) result.weekly = { used_percent: val }
+  if (u) {
+    // Session (5-hour rolling window)
+    if (u.five_hour) {
+      const pct = Math.round(u.five_hour.utilization ?? 0)
+      const resetISO = u.five_hour.resets_at || null
+      const diffMs = resetISO ? Math.max(0, new Date(resetISO) - Date.now()) : 0
+      result.session = {
+        used_percent:      pct,
+        resets_in_hours:   Math.floor(diffMs / 3600000),
+        resets_in_minutes: Math.floor((diffMs % 3600000) / 60000),
+        reset_iso:         resetISO
       }
-    })
-  }
+    }
 
-  // Extract weekly reset label: "Resets Tue 11:00 AM"
-  if (result.weekly) {
-    const weeklyResetMatch = raw.match(/Resets\s+(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2}:\d{2}\s*[AP]M)/i)
-    if (weeklyResetMatch) {
-      result.weekly.reset_label = `Resets ${weeklyResetMatch[1]} ${weeklyResetMatch[2]}`
+    // Weekly (7-day rolling window)
+    if (u.seven_day) {
+      const pct = Math.round(u.seven_day.utilization ?? 0)
+      const resetISO = u.seven_day.resets_at || null
+      // Derive reset day/time label from ISO for the renderer
+      let reset_label = null
+      if (resetISO) {
+        const d = new Date(resetISO)
+        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+        const h = d.getHours(), m = String(d.getMinutes()).padStart(2,'0')
+        const ampm = h >= 12 ? 'PM' : 'AM'
+        const h12 = h % 12 || 12
+        reset_label = `Resets ${days[d.getDay()]} ${h12}:${m} ${ampm}`
+      }
+      result.weekly = { used_percent: pct, reset_label }
+    }
+
+    // Extra usage (pay-as-you-go overage)
+    if (u.extra_usage?.is_enabled) {
+      result.extra_usage = {
+        total_spent:   u.extra_usage.used_credits  ?? 0,
+        monthly_limit: u.extra_usage.monthly_limit ?? 10.00
+      }
     }
   }
 
-  // Extract session reset time: "Resets in 1 hr 18 min", "Resets in 45 min", etc.
-  if (result.session) {
-    const resetMatch = raw.match(/Resets\s+in\s+(?:(\d+)\s*hr?)?\s*(?:(\d+)\s*min)?/i)
-    if (resetMatch) {
-      result.session.resets_in_hours   = parseInt(resetMatch[1]) || 0
-      result.session.resets_in_minutes = parseInt(resetMatch[2]) || 0
-    }
-  }
-
-  // Dollar amounts for balance/spend
-  if (scraped.dollars && scraped.dollars.length > 0) {
-    result.extra_usage = {
-      total_spent: scraped.dollars[0],
-      monthly_limit: scraped.dollars[1] || 10.00
-    }
-  }
-
-  result.last_updated = scraped.ts
+  result.last_updated = ts
   return result
 }
 
@@ -495,7 +495,7 @@ function anthropicPing(apiKey) {
   return new Promise((resolve) => {
     let body = ''
     const payload = JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-3-20240307',
       max_tokens: 1,
       messages: [{ role: 'user', content: 'x' }]
     })
@@ -628,6 +628,7 @@ async function fetchLiveData(apiKey) {
 
   // ── Rate-limit headers from a minimal Messages call (Haiku, 1 token) ──
   const modelsRes = await anthropicPing(apiKey)
+  console.log('[api] ping status:', modelsRes?.status, modelsRes?.body?.slice(0, 150))
   if (modelsRes && modelsRes.status === 200) {
     const h = modelsRes.headers
 
@@ -906,8 +907,11 @@ async function refreshAndPush() {
 
     // Also fetch API rate limits — throttled to every 5 min (costs real tokens)
     const apiKey = getStoredKey()
+    console.log(`[api] key present: ${!!apiKey}, lastPing: ${Math.round((Date.now()-lastApiPing)/1000)}s ago`)
     if (apiKey && (Date.now() - lastApiPing >= API_PING_INTERVAL)) {
+      console.log('[api] Pinging Anthropic API...')
       const apiLive = await fetchLiveData(apiKey)
+      console.log('[api] Response keys:', Object.keys(apiLive), JSON.stringify(apiLive).slice(0, 300))
       lastApiPing = Date.now()
       // API data fills in what console didn't provide
       if (apiLive.session && !live.session) live.session = apiLive.session
@@ -1055,12 +1059,13 @@ function showAuthScreen() {
 function updateTrayTitle() {
   if (!tray) return
   const pct = latestData?.session?.used_percent
+  const ver = `v${app.getVersion()}`
   tray.setImage(buildTrayIcon(pct))
   tray.setTitle('')
   if (pct != null) {
-    tray.setToolTip(`Claude Session Monitor · Session ${pct}%`)
+    tray.setToolTip(`Claude Session Monitor ${ver} · Session ${pct}%`)
   } else {
-    tray.setToolTip('Claude Session Monitor')
+    tray.setToolTip(`Claude Session Monitor ${ver}`)
   }
 }
 
@@ -1142,7 +1147,7 @@ function rebuildTrayMenu() {
 
 function createTray() {
   tray = new Tray(buildTrayIcon(null))
-  tray.setToolTip('Claude Session Monitor')
+  tray.setToolTip(`Claude Session Monitor v${app.getVersion()}`)
   rebuildTrayMenu()
   // tray click intentionally does nothing — use the right-click menu to show/hide
 }
@@ -1219,6 +1224,8 @@ function createWindow() {
 }
 
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
+ipcMain.handle('get-version', () => app.getVersion())
+
 ipcMain.handle('get-auth-state', () => {
   const key = getStoredKey()
   return { authenticated: !!key }

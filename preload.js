@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // App info
+  getVersion:      ()        => ipcRenderer.invoke('get-version'),
+
   // Auth
   getAuthState:    ()        => ipcRenderer.invoke('get-auth-state'),
   validateApiKey:  (key)     => ipcRenderer.invoke('validate-api-key', key),
