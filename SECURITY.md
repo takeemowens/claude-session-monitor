@@ -6,12 +6,12 @@ the app before you run it.
 
 ## What the app accesses locally
 
-- **macOS Keychain** — via Electron's `safeStorage`, to encrypt and decrypt
+- **macOS Keychain**, via Electron's `safeStorage`, to encrypt and decrypt
   your Anthropic API key at rest. The app reads only the key it wrote itself.
-- **Your Anthropic API key** — stored encrypted at `~/.claude-widget/auth.json`
+- **Your Anthropic API key**, stored encrypted at `~/.claude-widget/auth.json`
   with `0600` file permissions (owner read/write only), outside the project
   directory. It is never written to this repository.
-- **Google Chrome cookie database (optional)** — only if you explicitly choose
+- **Google Chrome cookie database (optional)**, only if you explicitly choose
   "Import from Chrome" during sign-in. The app reads a single `sessionKey`
   cookie for `claude.ai` so you can authenticate without re-entering your
   password. This read happens entirely on your machine. If you sign in through
