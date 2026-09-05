@@ -195,6 +195,27 @@ function getChromeSessionKey() {
   }
 }
 
+// Counts distinct Claude Code sessions on this Mac. Each session shows up as
+// two processes (the claude binary and its disclaimer wrapper), so dedupe by
+// the --resume=<uuid> argument rather than counting matching lines. Only sees
+// this machine, and can't tell an idle app-managed "warm" session from one
+// actively spending tokens -- both look identical at the process level.
+function countActiveSessions() {
+  try {
+    const out = execFileSync('ps', ['aux'], { encoding: 'utf8' })
+    const ids = new Set()
+    for (const line of out.split('\n')) {
+      if (!line.includes('claude.app/Contents/MacOS/claude')) continue
+      const m = line.match(/--resume=([a-f0-9-]+)/)
+      if (m) ids.add(m[1])
+    }
+    return ids.size
+  } catch (e) {
+    console.error('[sessions] Count failed:', e.message)
+    return null
+  }
+}
+
 async function importChromeSession() {
   const sessionKey = getChromeSessionKey()
   if (!sessionKey) return false
@@ -888,6 +909,78 @@ function checkAndNotify(data) {
   }
 }
 
+// ─── Usage velocity tracking ───────────────────────────────────────────────────
+// Fed entirely by the free console scrape (parseScrapedData), not the paid-API
+// snapshot mechanism above (appendSnapshot / writeUsageLog / readUsageLog),
+// which only fires when API_PING_ENABLED is true and is not currently writing
+// anything with the paid ping off.
+const VELOCITY_LOG_PATH          = path.join(AUTH_DIR, 'usage_velocity_log.json')
+const VELOCITY_MAX_AGE_MS        = 3 * 60 * 60 * 1000  // 3 hours — short lookback only
+const VELOCITY_LOOKBACK_MS       = 5 * 60 * 1000       // compare against ~5 min ago
+const VELOCITY_THRESHOLD_PCT     = 15                  // pct-points climbed in that window
+const VELOCITY_ALERT_COOLDOWN_MS = 15 * 60 * 1000
+let lastVelocityAlertAt = 0
+
+function readVelocityLog() {
+  try {
+    if (!fs.existsSync(VELOCITY_LOG_PATH)) return { entries: [] }
+    return JSON.parse(fs.readFileSync(VELOCITY_LOG_PATH, 'utf8'))
+  } catch (e) {
+    console.error('[velocity] Read failed:', e.message)
+    return { entries: [] }
+  }
+}
+
+function appendVelocityEntry(sessionPct, weeklyPct) {
+  const log = readVelocityLog()
+  const now = Date.now()
+  log.entries.push({ ts: now, session_pct: sessionPct ?? null, weekly_pct: weeklyPct ?? null })
+  const cutoff = now - VELOCITY_MAX_AGE_MS
+  log.entries = log.entries.filter(e => e.ts > cutoff)
+  try {
+    fs.writeFileSync(VELOCITY_LOG_PATH, JSON.stringify(log, null, 2), { mode: 0o600 })
+  } catch (e) {
+    console.error('[velocity] Write failed:', e.message)
+  }
+  return log.entries
+}
+
+// Compares current session usage to the entry closest to VELOCITY_LOOKBACK_MS
+// ago. A fast climb combined with more than one active session is a much
+// stronger signal than either alone -- this is what would have explained
+// tonight's spike the moment it started, instead of after the fact.
+function checkVelocity(entries, sessionPct, activeSessions) {
+  if (muteNotifications || !Notification.isSupported()) return
+  if (sessionPct == null) return
+
+  const now = Date.now()
+  if (now - lastVelocityAlertAt < VELOCITY_ALERT_COOLDOWN_MS) return
+
+  const targetTs = now - VELOCITY_LOOKBACK_MS
+  let reference = null
+  for (const e of entries) {
+    if (e.ts >= now - 1000) continue  // skip the entry just appended this cycle
+    if (e.ts <= targetTs && (!reference || e.ts > reference.ts)) reference = e
+  }
+  if (!reference || reference.session_pct == null) return
+
+  // A reset between the two points shows up as a large negative climb, not a
+  // positive one, so this doesn't need separate reset handling.
+  const climb = sessionPct - reference.session_pct
+  if (climb < VELOCITY_THRESHOLD_PCT) return
+
+  lastVelocityAlertAt = now
+  const minutes = Math.max(1, Math.round((now - reference.ts) / 60000))
+  const sessionNote = activeSessions != null && activeSessions > 1
+    ? ` across ${activeSessions} active sessions`
+    : ''
+  new Notification({
+    title: 'Usage climbing fast',
+    body: `+${climb}% in ${minutes} min${sessionNote}.`,
+    silent: false
+  }).show()
+}
+
 // Full refresh — tries console scrape first, then API fallback
 async function refreshAndPush() {
   if (refreshLock) return
@@ -928,9 +1021,12 @@ async function refreshAndPush() {
     }
 
     const merged = mergeData(base, live)
+    merged.active_sessions = countActiveSessions()
     latestData = merged
     if (win && !win.isDestroyed()) win.webContents.send('config-updated', merged)
     checkAndNotify(merged)
+    const velocityEntries = appendVelocityEntry(merged.session?.used_percent, merged.weekly?.used_percent)
+    checkVelocity(velocityEntries, merged.session?.used_percent, merged.active_sessions)
     updateTrayTitle()
     rebuildTrayMenu()
     return merged
@@ -1067,12 +1163,14 @@ function updateTrayTitle() {
   if (!tray) return
   const pct = latestData?.session?.used_percent
   const ver = `v${app.getVersion()}`
+  const sessions = latestData?.active_sessions
   tray.setImage(buildTrayIcon(pct))
   tray.setTitle('')
+  const sessionSuffix = sessions != null ? ` · ${sessions} active` : ''
   if (pct != null) {
-    tray.setToolTip(`Claude Usage Monitor ${ver} · Session ${pct}%`)
+    tray.setToolTip(`Claude Usage Monitor ${ver} · Session ${pct}%${sessionSuffix}`)
   } else {
-    tray.setToolTip(`Claude Usage Monitor ${ver}`)
+    tray.setToolTip(`Claude Usage Monitor ${ver}${sessionSuffix}`)
   }
 }
 
