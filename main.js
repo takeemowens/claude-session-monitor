@@ -1333,6 +1333,15 @@ function createWindow() {
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 ipcMain.handle('get-version', () => app.getVersion())
 
+// Single source of truth for "does a claude.ai session already exist" --
+// was duplicated inline here and in the app.whenReady startup block, which
+// is how the two could silently drift out of sync.
+async function hasConsoleCookie() {
+  const ses = getConsoleSession()
+  const cookies = await ses.cookies.get({ url: 'https://claude.ai', name: 'sessionKey' })
+  return cookies.length > 0
+}
+
 // Was checking getStoredKey() only -- a leftover from before auth went
 // cookie-first. That made this always return false, since the UI no longer
 // has any path to store an API key, regardless of whether a valid claude.ai
@@ -1340,11 +1349,15 @@ ipcMain.handle('get-version', () => app.getVersion())
 // the startup flow (app.whenReady) already found or silently imported one;
 // the direct cookie check covers the race where this is called before that
 // async startup work finishes.
+//
+// The getStoredKey() fallback below is deliberately dormant, not dead code:
+// it's the paid-API path (API_PING_ENABLED), kept working in case that flag
+// is ever flipped back on, even though the current UI has no way to store
+// a key.
 ipcMain.handle('get-auth-state', async () => {
   if (isLoggedInToConsole) return { authenticated: true }
-  const ses = getConsoleSession()
-  const cookies = await ses.cookies.get({ url: 'https://claude.ai', name: 'sessionKey' })
-  return { authenticated: cookies.length > 0 || !!getStoredKey() }
+  const hasCookie = await hasConsoleCookie()
+  return { authenticated: hasCookie || !!getStoredKey() }
 })
 
 ipcMain.handle('validate-api-key', async (_, apiKey) => {
@@ -1449,10 +1462,8 @@ app.whenReady().then(async () => {
   if (getStoredKey()) startRefreshTimer()
 
   // Auto-detect existing console session from Chrome on startup
-  // Check if the persistent Electron session already has a valid cookie
-  const ses = getConsoleSession()
-  const cookies = await ses.cookies.get({ url: 'https://claude.ai', name: 'sessionKey' })
-  if (cookies.length > 0) {
+  const hasCookie = await hasConsoleCookie()
+  if (hasCookie) {
     // We have a session from a previous Chrome import — verify it
     isLoggedInToConsole = true
     rebuildTrayMenu()

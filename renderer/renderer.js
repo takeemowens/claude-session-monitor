@@ -76,6 +76,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   window.electronAPI.onConfigUpdated((data) => {
     lastUpdatedISO = data.last_updated
+    // getAuthState() is a one-shot check at load. If it resolved before the
+    // main process's own async cookie check/import finished, showAuth() ran
+    // on a stale answer -- this is the correction: whenever real session
+    // data arrives, authenticated is true by definition, so the view should
+    // reflect that now, not stay stuck on whatever was decided earlier.
+    if (data.session && document.getElementById('auth-view').classList.contains('active')) {
+      showDashboard()
+    }
     renderDashboard(data)
   })
 
