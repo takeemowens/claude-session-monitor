@@ -19,7 +19,6 @@
       "main.js",
       "preload.js",
       "renderer/**/*",
-      "assets/**/*",
       "usage_config.json",
       "package.json"
     ],

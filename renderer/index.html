@@ -14,14 +14,14 @@
     /* Bundled locally rather than pulled from the Google Fonts CDN, so the
        app makes no network call outside claude.ai. Both are OFL 1.1. */
     @font-face {
-      font-family: 'Special Gothic Expanded One';
-      src: url('fonts/special-gothic-expanded-one.woff2') format('woff2');
-      font-weight: 400;
+      font-family: 'Archivo';
+      src: url('fonts/archivo-700.woff2') format('woff2');
+      font-weight: 700;
       font-display: block;
     }
     @font-face {
-      font-family: 'Special Gothic';
-      src: url('fonts/special-gothic.woff2') format('woff2');
+      font-family: 'IBM Plex Mono';
+      src: url('fonts/ibm-plex-mono-400.woff2') format('woff2');
       font-weight: 400;
       font-display: block;
     }
@@ -159,46 +159,43 @@
     #auth-view button,
     #auth-view a { -webkit-app-region: no-drag; }
 
-    /* 280 is set by the widest thing on the screen: the title measures 270 in
-       Special Gothic Expanded One. The window is then sized to this plus the
-       view's padding, so the frame fits the content rather than the content
-       floating in a fixed frame.
+    /* Width is set by the widest thing on the screen, then the window is sized
+       to that plus the view's padding, so the frame fits the content rather
+       than the content floating in a fixed frame.
 
        Every vertical gap below is a multiple of 8, and each step up marks a
-       bigger break: 16 ties the caption to the button it describes, 24
-       separates the mark from the name, 32 sets off the one decision. */
+       bigger break: 16 ties the caption to the button it describes, 32 sets
+       off the one decision on the screen. */
     .auth-col {
-      width: 280px;
+      /* Set by the caption, not the title: the mono line runs 263px where
+         Archivo puts the title at 232. */
+      width: 272px;
       display: flex;
       flex-direction: column;
       align-items: center;
     }
 
-    /* Bare mark, no tile. Sized up from the 24px it used inside the box so
-       it still holds the top of the column on its own. */
-    .auth-logo {
-      width: 34px;
-      height: 34px;
-      margin-bottom: 24px;
-    }
-
-    /* Both faces ship a single 400 weight, so nothing here asks for a
-       heavier one: the browser would synthesise it and smear the shapes. */
+    /* Only the weights actually bundled are requested: Archivo at 700, Plex
+       Mono at 400. Asking for anything else makes the browser synthesise it. */
     .auth-title {
-      font-family: 'Special Gothic Expanded One', var(--sys);
-      font-size: 21px;
-      font-weight: 400;
+      font-family: 'Archivo', var(--sys);
+      font-size: 22px;
+      font-weight: 700;
       color: var(--at1);
-      letter-spacing: -0.2px;
-      line-height: 1.08;
+      letter-spacing: -0.5px;
+      line-height: 1.1;
       margin-bottom: 32px;
     }
 
+    /* Mono carries a wider advance per character, so this sits a step below
+       the 13px a proportional face was using or the line outruns the column. */
     .auth-sub {
-      font-family: 'Special Gothic', var(--sys);
-      font-size: 13px;
+      font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11.5px;
+      font-weight: 400;
       color: var(--at2);
-      line-height: 1.5;
+      line-height: 1.6;
+      letter-spacing: -0.1px;
       margin-bottom: 0;
     }
 
@@ -223,7 +220,7 @@
       border-radius: 10px;
       padding: 0 18px;
       height: 42px;
-      font-family: 'Special Gothic', var(--sys);
+      font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 14px;
       font-weight: 400;
       cursor: pointer;
@@ -509,8 +506,6 @@
   <div class="view" id="auth-view">
 
     <div class="auth-col">
-
-    <img class="auth-logo" src="claude-logo.svg" alt="" />
 
     <p class="auth-title">Claude Usage Monitor</p>
 

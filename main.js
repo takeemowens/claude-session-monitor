@@ -34,24 +34,10 @@ const sandboxBridge = !app.isPackaged ? require('./sandbox-bridge') : null
 const AUTH_DIR  = path.join(os.homedir(), '.claude-widget')
 const AUTH_PATH = path.join(AUTH_DIR, 'auth.json')
 
-// ─── Notification icon ────────────────────────────────────────────────────────
-// macOS attributes a notification to the bundle that raised it, so under
-// `npm start` the badge is Electron's own icon and no option changes that.
-// Passing the image explicitly is what gets the app's mark onto the
-// notification once it is packaged. Resolved through __dirname so it works
-// inside the asar as well as from source.
-let NOTIF_ICON
-function notifIcon() {
-  if (NOTIF_ICON === undefined) {
-    try {
-      const img = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png'))
-      NOTIF_ICON = img.isEmpty() ? null : img
-    } catch (e) {
-      NOTIF_ICON = null
-    }
-  }
-  return NOTIF_ICON || undefined
-}
+// Deliberately no `icon` on the notifications below. On macOS that option does
+// not change the app badge, it adds a second thumbnail on the right of the
+// banner, which just duplicates the badge. The badge itself comes from the
+// running bundle: Electron under `npm start`, the app's own icns once packaged.
 
 // In dev mode (unsigned Electron), safeStorage generates a new OS key each launch,
 // so encrypt-on-save / decrypt-on-next-launch always fails. Fall back to plain file
@@ -381,7 +367,6 @@ async function scrapeConsoleUsage() {
           new Notification({
             title: 'Claude session expired',
             body: 'Sign into claude.ai in Chrome, then use Account → Import from Chrome.',
-            icon: notifIcon(),
             silent: false
           }).show()
         }
@@ -897,7 +882,7 @@ function checkAndNotify(data) {
   for (const a of alerts) {
     if (a.pct != null && a.pct >= a.threshold && !firedNotifications.has(a.key)) {
       firedNotifications.add(a.key)
-      new Notification({ title: a.title, body: a.body, icon: notifIcon(), silent: false }).show()
+      new Notification({ title: a.title, body: a.body, silent: false }).show()
       break  // one notification per refresh cycle
     }
   }
