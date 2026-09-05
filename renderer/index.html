@@ -120,113 +120,112 @@
     /* ════════════════════════════════════════════════════════════════════════ */
     /*  AUTH VIEW                                                              */
     /* ════════════════════════════════════════════════════════════════════════ */
+    /* The front door is always dark, whatever theme the dashboard is in.
+       It is a one-time screen, so it gets to be the dramatic moment. */
     #auth-view {
+      --aground: #0F1621;
+      --atile:   #1B2534;
+      --ahair:   #263143;
+      --at1:     #EEF2F7;
+      --at2:     #8695A8;
+
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 28px 32px 24px;
+      padding: 34px 34px 26px;
       gap: 0;
-      background: var(--surface);
+      background: var(--aground);
       border-radius: var(--r);
-      transition: background 0.25s ease;
       -webkit-app-region: drag;
     }
-    #auth-view input,
     #auth-view button,
     #auth-view a { -webkit-app-region: no-drag; }
 
-    .auth-logo {
-      width: 36px;
-      height: 36px;
-      margin-bottom: 12px;
+    /* Icon tile, lit from behind. This glow is the one flourish on the
+       screen; everything else stays flat and quiet. */
+    .auth-mark {
+      position: relative;
+      width: 46px;
+      height: 46px;
+      border-radius: 13px;
+      background: var(--atile);
+      border: 1px solid var(--ahair);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 18px;
     }
+    .auth-mark::before {
+      content: '';
+      position: absolute;
+      inset: -22px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(217,119,87,0.28) 0%, rgba(217,119,87,0) 68%);
+      pointer-events: none;
+    }
+    .auth-logo { width: 26px; height: 26px; position: relative; }
 
     .auth-title {
-      font-size: 15px;
+      font-size: 19px;
       font-weight: 600;
-      color: var(--t1);
-      letter-spacing: -0.3px;
-      margin-bottom: 2px;
+      color: var(--at1);
+      letter-spacing: -0.4px;
+      margin-bottom: 5px;
     }
 
     .auth-sub {
-      font-size: 12px;
-      color: var(--t3);
-      line-height: 1.4;
-      margin-bottom: 16px;
-    }
-
-    .auth-field-label {
-      font-size: 11px;
-      font-weight: 500;
-      color: var(--t2);
-      text-align: left;
-      width: 100%;
-      margin-bottom: 5px;
-      letter-spacing: 0.01em;
-    }
-
-    .input-wrap { width: 100%; margin-bottom: 6px; }
-
-    .api-input {
-      width: 100%;
-      background: var(--input-bg);
-      border: 1px solid var(--input-border);
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-family: inherit;
       font-size: 12.5px;
-      color: var(--t1);
-      outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
-      letter-spacing: 0.3px;
-    }
-    .api-input::placeholder { color: var(--t3); letter-spacing: 0; }
-    .api-input:focus {
-      border-color: var(--input-focus);
-      background: var(--surface);
-      box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.1) !important;
+      color: var(--at2);
+      line-height: 1.5;
+      max-width: 25ch;
+      margin-bottom: 22px;
     }
 
     .auth-error {
       font-size: 11.5px;
-      color: var(--error);
-      min-height: 14px;
-      margin-bottom: 4px;
-      line-height: 1.3;
+      color: #F08A7A;
+      min-height: 0;
+      line-height: 1.4;
+      margin-bottom: 0;
     }
+    .auth-error:not(:empty) { margin-bottom: 12px; }
 
     .connect-btn {
       width: 100%;
-      background: var(--clay);
+      background: linear-gradient(135deg, #D97757 0%, #E8A44C 100%);
       color: #fff;
       border: none;
-      border-radius: 8px;
-      padding: 9px 16px;
+      border-radius: 10px;
+      padding: 0 18px;
+      height: 44px;
       font-family: inherit;
-      font-size: 13px;
-      font-weight: 500;
+      font-size: 13.5px;
+      font-weight: 600;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      transition: background 0.14s, transform 0.1s, opacity 0.14s;
-      margin-bottom: 10px;
-      letter-spacing: -0.05px;
+      gap: 7px;
+      transition: filter 0.14s, transform 0.1s, opacity 0.14s;
+      margin-bottom: 14px;
+      letter-spacing: -0.1px;
     }
-    .connect-btn:hover:not(:disabled)  { background: var(--clay-hover); }
+    .connect-btn:hover:not(:disabled)  { filter: brightness(1.08); }
     .connect-btn:active:not(:disabled) { transform: scale(0.985); }
-    .connect-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-    .get-key-link {
-      font-size: 10.5px;
-      color: var(--t3);
-      text-decoration: none;
-      transition: color 0.12s;
-      cursor: pointer;
+    .connect-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+    .connect-btn:focus-visible {
+      outline: 2px solid #E8A44C;
+      outline-offset: 2px;
     }
-    .get-key-link:hover { color: var(--t2); text-decoration: underline; }
+
+    /* Full opacity, not a dimmed tint: at 11px this needs to clear 4.5:1
+       against the slate ground, and a 0.75 alpha drops it to 3.9:1. */
+    .auth-foot {
+      font-size: 11px;
+      color: var(--at2);
+      line-height: 1.5;
+      max-width: 30ch;
+    }
 
     /* ════════════════════════════════════════════════════════════════════════ */
     /*  DASHBOARD VIEW                                                         */
@@ -489,37 +488,27 @@
   <!-- ════════════════════════════════════════════════════════════════════════ -->
   <div class="view" id="auth-view">
 
-    <img class="auth-logo" src="claude-logo.svg" alt="Claude" />
-
-    <p class="auth-title">Claude Session Monitor</p>
-    <p class="auth-sub">Monitor your Anthropic API usage</p>
-
-    <p class="auth-field-label">API Key</p>
-    <div class="input-wrap">
-      <input
-        id="api-key-input"
-        class="api-input"
-        type="password"
-        placeholder="sk-ant-api03-…"
-        autocomplete="off"
-        spellcheck="false"
-      />
+    <div class="auth-mark">
+      <img class="auth-logo" src="claude-logo.svg" alt="" />
     </div>
+
+    <p class="auth-title">Claude usage</p>
+    <p class="auth-sub">Uses the claude.ai session you are already signed in to.</p>
 
     <div class="auth-error" id="auth-error"></div>
 
     <button id="connect-btn" class="connect-btn">
-      <svg id="connect-spinner" class="spin" style="display:none" width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <svg id="connect-spinner" class="spin" style="display:none" width="15" height="15" viewBox="0 0 24 24" fill="none">
         <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" stroke-width="2.5"/>
         <path d="M12 3a9 9 0 0 1 9 9" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
       </svg>
-      <span id="connect-label">Connect</span>
-      <svg id="connect-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <span id="connect-label">Connect Claude.ai session</span>
+      <svg id="connect-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M5 12h14M12 5l7 7-7 7"/>
       </svg>
     </button>
 
-    <a class="get-key-link" id="get-key-link">Get your API key at console.anthropic.com</a>
+    <p class="auth-foot">No API key needed. The only site this reads is claude.ai.</p>
 
   </div><!-- /auth-view -->
 

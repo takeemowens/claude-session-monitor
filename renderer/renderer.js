@@ -55,7 +55,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   window.electronAPI.onShowAuthView(() => {
-    document.getElementById('api-key-input').value = ''
     clearAuthError()
     setConnecting(false)
     isExpanded = false
@@ -94,36 +93,21 @@ function showDashboard() {
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 function bindAuthControls() {
-  const input = document.getElementById('api-key-input')
-  const btn   = document.getElementById('connect-btn')
-
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') btn.click() })
+  const btn = document.getElementById('connect-btn')
 
   btn.addEventListener('click', async () => {
-    const key = input.value.trim()
-    if (!key) { setAuthError('Please enter your API key.'); return }
-    if (!key.startsWith('sk-ant-')) { setAuthError('Key should start with sk-ant-…'); return }
-
     setConnecting(true)
     clearAuthError()
 
-    const result = await window.electronAPI.validateApiKey(key)
-    if (result.valid) {
-      await window.electronAPI.saveApiKey(key)
+    // Reads the claude.ai sessionKey out of Chrome. No key to type.
+    const ok = await window.electronAPI.importChromeSession()
+    if (ok) {
       showDashboard()
       await loadAndRender()
     } else {
-      const msg = result.statusCode === 401
-        ? 'Invalid API key — please check and try again.'
-        : `Could not connect (${result.statusCode ?? 'network error'}).`
-      setAuthError(msg)
+      setAuthError('No active claude.ai session found. Sign in to claude.ai in Chrome, then try again.')
       setConnecting(false)
     }
-  })
-
-  document.getElementById('get-key-link').addEventListener('click', (e) => {
-    e.preventDefault()
-    window.electronAPI.openExternal('https://console.anthropic.com/settings/keys')
   })
 }
 
@@ -133,7 +117,7 @@ function setConnecting(loading) {
   const spinner = document.getElementById('connect-spinner')
   const arrow   = document.getElementById('connect-arrow')
   btn.disabled          = loading
-  label.textContent     = loading ? 'Connecting…' : 'Connect'
+  label.textContent     = loading ? 'Connecting…' : 'Connect Claude.ai session'
   spinner.style.display = loading ? 'block' : 'none'
   arrow.style.display   = loading ? 'none'  : 'block'
 }
@@ -385,7 +369,6 @@ function bindDashboardControls() {
   // Sign out
   document.getElementById('btn-signout').addEventListener('click', async () => {
     await window.electronAPI.signOut()
-    document.getElementById('api-key-input').value = ''
     clearAuthError()
     setConnecting(false)
     isExpanded = false
