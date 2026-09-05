@@ -140,15 +140,16 @@
        It is a one-time screen, so it gets to be the dramatic moment. */
     #auth-view {
       --aground: #0F1621;
-      --atile:   #1B2534;
-      --ahair:   #263143;
       --at1:     #EEF2F7;
       --at2:     #8695A8;
 
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 34px 34px 26px;
+      /* Bottom is one step lighter than top on purpose: the mark is a dense
+         44px block, the footnote is 11px text carrying line-box slack, so
+         equal padding reads bottom-heavy. */
+      padding: 32px 24px 24px;
       gap: 0;
       background: var(--aground);
       border-radius: var(--r);
@@ -158,7 +159,12 @@
     #auth-view a { -webkit-app-region: no-drag; }
 
     /* Narrow centred column. The popover is a fixed 460px, so the tall
-       proportions have to come from constraining the content, not the frame. */
+       proportions have to come from constraining the content, not the frame.
+
+       Every vertical gap below is a multiple of 8, and each step up marks a
+       bigger break: 8 binds the title to its subtitle, 16 ties the footnote
+       to the button it annotates, 24 separates the mark from the message,
+       and 32 sets off the one decision on the screen. */
     .auth-col {
       width: 300px;
       display: flex;
@@ -166,18 +172,13 @@
       align-items: center;
     }
 
-    .auth-mark {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      background: var(--atile);
-      border: 1px solid var(--ahair);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 20px;
+    /* Bare mark, no tile. Sized up from the 24px it used inside the box so
+       it still holds the top of the column on its own. */
+    .auth-logo {
+      width: 34px;
+      height: 34px;
+      margin-bottom: 24px;
     }
-    .auth-logo { width: 24px; height: 24px; }
 
     /* Both faces ship a single 400 weight, so nothing here asks for a
        heavier one: the browser would synthesise it and smear the shapes. */
@@ -188,7 +189,7 @@
       color: var(--at1);
       letter-spacing: -0.2px;
       line-height: 1.08;
-      margin-bottom: 9px;
+      margin-bottom: 8px;
     }
 
     .auth-sub {
@@ -197,7 +198,7 @@
       color: var(--at2);
       line-height: 1.5;
       text-wrap: balance;
-      margin-bottom: 24px;
+      margin-bottom: 32px;
     }
 
     .auth-error {
@@ -207,7 +208,7 @@
       line-height: 1.4;
       margin-bottom: 0;
     }
-    .auth-error:not(:empty) { margin-bottom: 12px; }
+    .auth-error:not(:empty) { margin-bottom: 16px; }
 
     /* One hue with a light-to-deep fall, not two hues blended. Clay into
        amber turned into a muddy bar; this reads as a solid with depth.
@@ -516,9 +517,7 @@
 
     <div class="auth-col">
 
-    <div class="auth-mark">
-      <img class="auth-logo" src="claude-logo.svg" alt="" />
-    </div>
+    <img class="auth-logo" src="claude-logo.svg" alt="" />
 
     <p class="auth-title">Claude Usage Monitor</p>
     <p class="auth-sub">Reads your existing claude.ai session</p>
