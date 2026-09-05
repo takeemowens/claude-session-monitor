@@ -146,10 +146,9 @@
       align-items: center;
       justify-content: center;
       text-align: center;
-      /* Bottom is one step lighter than top on purpose: the mark is a dense
-         44px block, the footnote is 11px text carrying line-box slack, so
-         equal padding reads bottom-heavy. */
-      padding: 32px 24px 24px;
+      /* Symmetric now that the column ends on the button. Both the mark and
+         the button are dense blocks, so equal padding reads equal. */
+      padding: 32px 24px;
       gap: 0;
       background: var(--aground);
       border-radius: var(--r);
@@ -197,7 +196,6 @@
       font-size: 13px;
       color: var(--at2);
       line-height: 1.5;
-      text-wrap: balance;
       margin-bottom: 32px;
     }
 
@@ -231,7 +229,6 @@
       justify-content: center;
       gap: 7px;
       transition: filter 0.14s, transform 0.1s, opacity 0.14s;
-      margin-bottom: 16px;
       letter-spacing: -0.1px;
     }
     .connect-btn:hover:not(:disabled)  { filter: brightness(1.07); }
@@ -245,14 +242,6 @@
       outline-offset: 2px;
     }
 
-    /* Full opacity, not a dimmed tint: at this size it needs to clear
-       4.5:1 against the slate ground, and a 0.75 alpha drops it to 3.9:1. */
-    .auth-foot {
-      font-family: 'Special Gothic', var(--sys);
-      font-size: 11.5px;
-      color: var(--at2);
-      line-height: 1.5;
-    }
 
     /* ════════════════════════════════════════════════════════════════════════ */
     /*  DASHBOARD VIEW                                                         */
@@ -520,7 +509,9 @@
     <img class="auth-logo" src="claude-logo.svg" alt="" />
 
     <p class="auth-title">Claude Usage Monitor</p>
-    <p class="auth-sub">Reads your existing claude.ai session</p>
+    <!-- Explicit break: these are two statements, and left to wrap on its
+         own the line splits "claude.ai" from "session". -->
+    <p class="auth-sub">Reads your existing claude.ai session.<br />No API key needed.</p>
 
     <div class="auth-error" id="auth-error"></div>
 
@@ -534,8 +525,6 @@
         <path d="M5 12h14M12 5l7 7-7 7"/>
       </svg>
     </button>
-
-    <p class="auth-foot">No API key needed</p>
 
     </div><!-- /auth-col -->
 
