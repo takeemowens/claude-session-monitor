@@ -159,17 +159,14 @@
     #auth-view button,
     #auth-view a { -webkit-app-region: no-drag; }
 
-    /* Width is set by the widest thing on the screen, then the window is sized
-       to that plus the view's padding, so the frame fits the content rather
-       than the content floating in a fixed frame.
+    /* The window keeps the full popover width so this view and the dashboard
+       match; the column is what holds the content to a readable measure.
 
        Every vertical gap below is a multiple of 8, and each step up marks a
        bigger break: 16 ties the caption to the button it describes, 32 sets
        off the one decision on the screen. */
     .auth-col {
-      /* Set by the caption, not the title: the mono line runs 263px where
-         Archivo puts the title at 232. */
-      width: 272px;
+      width: 300px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -332,11 +329,15 @@
       letter-spacing: -0.2px;
     }
 
+    /* Holds the reset countdowns, which tick every minute. Without tabular
+       figures the text reflows whenever a digit changes width, most visibly
+       going from 10 min to 9 min. */
     .section-meta {
       font-size: 12px;
       color: var(--t2);
       letter-spacing: -0.1px;
       white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
 
     /* Bar row: [track flex-1] [%] */

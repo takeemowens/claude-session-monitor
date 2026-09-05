@@ -42,25 +42,14 @@ function measureAuthHeight() {
   )
 }
 
-// Same rule on the other axis: the column is as wide as its widest element and
-// the window is that plus padding, rather than the content floating inside a
-// fixed 460 with dead space either side.
-function measureAuthWidth() {
-  const view = document.getElementById('auth-view')
-  const col  = view && view.querySelector('.auth-col')
-  if (!col) return null   // null → main restores the default width
-  const cs = getComputedStyle(view)
-  return Math.ceil(
-    col.getBoundingClientRect().width +
-    parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight)
-  )
-}
 
 // The display face is font-display:block, so the first paint is invisible text
 // at fallback metrics. Measuring then locks in the wrong height.
+// Height is measured, width is not: null keeps the default popover width so
+// the auth view and the dashboard stay the same size as each other.
 function sizeAuthWindow() {
   const apply = () => requestAnimationFrame(
-    () => window.electronAPI.setWindowSize(measureAuthWidth(), measureAuthHeight())
+    () => window.electronAPI.setWindowSize(null, measureAuthHeight())
   )
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(apply)
   else apply()
