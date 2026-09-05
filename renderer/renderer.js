@@ -25,6 +25,33 @@ function measureDashboardHeight() {
   return last.offsetTop + last.offsetHeight
 }
 
+// Measure the auth column, not #auth-view. The view is position:absolute with
+// inset:0, so it is stretched to whatever the window already is — reading its
+// height to then set the window height is circular and just returns the
+// current value. Measuring the content and adding the view's own padding is
+// what makes the top and bottom padding fixed: the window is always exactly
+// content plus padding, whatever the content happens to be.
+function measureAuthHeight() {
+  const view = document.getElementById('auth-view')
+  const col  = view && view.querySelector('.auth-col')
+  if (!col) return 198
+  const cs = getComputedStyle(view)
+  return Math.ceil(
+    col.getBoundingClientRect().height +
+    parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)
+  )
+}
+
+// The display face is font-display:block, so the first paint is invisible text
+// at fallback metrics. Measuring then locks in the wrong height.
+function sizeAuthWindow() {
+  const apply = () => requestAnimationFrame(
+    () => window.electronAPI.setWindowHeight(measureAuthHeight())
+  )
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(apply)
+  else apply()
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   // Show app version in footer
@@ -74,10 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 function showAuth() {
   document.getElementById('auth-view').classList.add('active')
   document.getElementById('dashboard-view').classList.remove('active')
-  requestAnimationFrame(() => {
-    const h = document.getElementById('auth-view').scrollHeight
-    window.electronAPI.setWindowHeight(h)
-  })
+  sizeAuthWindow()
 }
 
 function showDashboard() {
@@ -122,8 +146,16 @@ function setConnecting(loading) {
   arrow.style.display   = loading ? 'none'  : 'block'
 }
 
-function setAuthError(msg)  { document.getElementById('auth-error').textContent = msg }
-function clearAuthError()   { document.getElementById('auth-error').textContent = '' }
+// Both re-size: the error is part of the column, so showing or clearing it
+// changes the content height the window is supposed to fit.
+function setAuthError(msg) {
+  document.getElementById('auth-error').textContent = msg
+  sizeAuthWindow()
+}
+function clearAuthError() {
+  document.getElementById('auth-error').textContent = ''
+  sizeAuthWindow()
+}
 
 // ─── Dashboard data ───────────────────────────────────────────────────────────
 async function loadAndRender() {
