@@ -1333,9 +1333,18 @@ function createWindow() {
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 ipcMain.handle('get-version', () => app.getVersion())
 
-ipcMain.handle('get-auth-state', () => {
-  const key = getStoredKey()
-  return { authenticated: !!key }
+// Was checking getStoredKey() only -- a leftover from before auth went
+// cookie-first. That made this always return false, since the UI no longer
+// has any path to store an API key, regardless of whether a valid claude.ai
+// session cookie already existed. isLoggedInToConsole covers the case where
+// the startup flow (app.whenReady) already found or silently imported one;
+// the direct cookie check covers the race where this is called before that
+// async startup work finishes.
+ipcMain.handle('get-auth-state', async () => {
+  if (isLoggedInToConsole) return { authenticated: true }
+  const ses = getConsoleSession()
+  const cookies = await ses.cookies.get({ url: 'https://claude.ai', name: 'sessionKey' })
+  return { authenticated: cookies.length > 0 || !!getStoredKey() }
 })
 
 ipcMain.handle('validate-api-key', async (_, apiKey) => {
