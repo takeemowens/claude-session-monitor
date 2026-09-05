@@ -14,7 +14,7 @@
   },
   "build": {
     "appId": "com.takeem.claude-usage-widget",
-    "productName": "Claude Usage Widget",
+    "productName": "Claude Usage Monitor",
     "files": [
       "main.js",
       "preload.js",
@@ -36,7 +36,7 @@
       ]
     },
     "dmg": {
-      "title": "Claude Usage Widget",
+      "title": "Claude Usage Monitor",
       "window": {
         "width": 540,
         "height": 380

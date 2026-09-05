@@ -1,8 +1,8 @@
-# Claude Usage Widget
+# Claude Usage Monitor
 
 A minimal macOS menu-bar widget for monitoring your Anthropic and Claude usage: session limits, weekly quota, extra spend, and account balance. Always-on-top, collapsible, and live-updating.
 
-![Claude Usage Widget](claude-usage.png)
+![Claude Usage Monitor](claude-usage.png)
 
 ---
 

@@ -1,0 +1,11 @@
+Special Gothic Expanded One
+Special Gothic
+
+Both licensed under the SIL Open Font License 1.1.
+Source: https://fonts.google.com/
+
+Bundled here rather than loaded from the Google Fonts CDN so the app
+makes no network request outside claude.ai at runtime.
+
+If this app is redistributed, ship the full OFL 1.1 text alongside
+these files as the license requires.

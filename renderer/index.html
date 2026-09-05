@@ -3,13 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none';">
-  <title>Claude Session Monitor</title>
+  <title>Claude Usage Monitor</title>
   <style>
     /* ── Reset ──────────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     /* Kill all focus rings — this is a widget, not a form */
     *:focus, *:focus-visible, *:focus-within { outline: none !important; box-shadow: none !important; }
+
+    /* Bundled locally rather than pulled from the Google Fonts CDN, so the
+       app makes no network call outside claude.ai. Both are OFL 1.1. */
+    @font-face {
+      font-family: 'Special Gothic Expanded One';
+      src: url('fonts/special-gothic-expanded-one.woff2') format('woff2');
+      font-weight: 400;
+      font-display: block;
+    }
+    @font-face {
+      font-family: 'Special Gothic';
+      src: url('fonts/special-gothic.woff2') format('woff2');
+      font-weight: 400;
+      font-display: block;
+    }
 
     html, body {
       width: 460px;
@@ -27,6 +42,7 @@
 
     /* ── Design tokens — light (default) ────────────────────────────────────── */
     :root {
+      --sys: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
       --clay:       #D97757;
       --clay-hover: #C4663E;
       --clay-dim:   rgba(217,119,87,0.12);
@@ -141,44 +157,47 @@
     #auth-view button,
     #auth-view a { -webkit-app-region: no-drag; }
 
-    /* Icon tile, lit from behind. This glow is the one flourish on the
-       screen; everything else stays flat and quiet. */
+    /* Narrow centred column. The popover is a fixed 460px, so the tall
+       proportions have to come from constraining the content, not the frame. */
+    .auth-col {
+      width: 300px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
     .auth-mark {
-      position: relative;
-      width: 46px;
-      height: 46px;
-      border-radius: 13px;
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
       background: var(--atile);
       border: 1px solid var(--ahair);
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 18px;
+      margin-bottom: 20px;
     }
-    .auth-mark::before {
-      content: '';
-      position: absolute;
-      inset: -22px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(217,119,87,0.28) 0%, rgba(217,119,87,0) 68%);
-      pointer-events: none;
-    }
-    .auth-logo { width: 26px; height: 26px; position: relative; }
+    .auth-logo { width: 24px; height: 24px; }
 
+    /* Both faces ship a single 400 weight, so nothing here asks for a
+       heavier one: the browser would synthesise it and smear the shapes. */
     .auth-title {
-      font-size: 19px;
-      font-weight: 600;
+      font-family: 'Special Gothic Expanded One', var(--sys);
+      font-size: 21px;
+      font-weight: 400;
       color: var(--at1);
-      letter-spacing: -0.4px;
-      margin-bottom: 5px;
+      letter-spacing: -0.2px;
+      line-height: 1.08;
+      margin-bottom: 9px;
     }
 
     .auth-sub {
-      font-size: 12.5px;
+      font-family: 'Special Gothic', var(--sys);
+      font-size: 13px;
       color: var(--at2);
       line-height: 1.5;
-      max-width: 25ch;
-      margin-bottom: 22px;
+      text-wrap: balance;
+      margin-bottom: 24px;
     }
 
     .auth-error {
@@ -190,41 +209,48 @@
     }
     .auth-error:not(:empty) { margin-bottom: 12px; }
 
+    /* One hue with a light-to-deep fall, not two hues blended. Clay into
+       amber turned into a muddy bar; this reads as a solid with depth.
+       Pitched deeper than Claude's #D97757 because white at 14px/400 only
+       clears 2.82:1 on that; these stops give 4.76:1 and 6.39:1. */
     .connect-btn {
       width: 100%;
-      background: linear-gradient(135deg, #D97757 0%, #E8A44C 100%);
+      background: linear-gradient(180deg, #B85630 0%, #9C4522 100%);
       color: #fff;
       border: none;
       border-radius: 10px;
       padding: 0 18px;
-      height: 44px;
-      font-family: inherit;
-      font-size: 13.5px;
-      font-weight: 600;
+      height: 42px;
+      font-family: 'Special Gothic', var(--sys);
+      font-size: 14px;
+      font-weight: 400;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 7px;
       transition: filter 0.14s, transform 0.1s, opacity 0.14s;
-      margin-bottom: 14px;
+      margin-bottom: 16px;
       letter-spacing: -0.1px;
     }
-    .connect-btn:hover:not(:disabled)  { filter: brightness(1.08); }
+    .connect-btn:hover:not(:disabled)  { filter: brightness(1.07); }
     .connect-btn:active:not(:disabled) { transform: scale(0.985); }
     .connect-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+    /* Needs !important to beat the global `*:focus-visible { outline: none }`
+       reset at the top of this file. This screen has exactly one control, so
+       keyboard users get nothing at all without a ring here. */
     .connect-btn:focus-visible {
-      outline: 2px solid #E8A44C;
+      outline: 2px solid #E8A44C !important;
       outline-offset: 2px;
     }
 
-    /* Full opacity, not a dimmed tint: at 11px this needs to clear 4.5:1
-       against the slate ground, and a 0.75 alpha drops it to 3.9:1. */
+    /* Full opacity, not a dimmed tint: at this size it needs to clear
+       4.5:1 against the slate ground, and a 0.75 alpha drops it to 3.9:1. */
     .auth-foot {
-      font-size: 11px;
+      font-family: 'Special Gothic', var(--sys);
+      font-size: 11.5px;
       color: var(--at2);
       line-height: 1.5;
-      max-width: 30ch;
     }
 
     /* ════════════════════════════════════════════════════════════════════════ */
@@ -488,12 +514,14 @@
   <!-- ════════════════════════════════════════════════════════════════════════ -->
   <div class="view" id="auth-view">
 
+    <div class="auth-col">
+
     <div class="auth-mark">
       <img class="auth-logo" src="claude-logo.svg" alt="" />
     </div>
 
-    <p class="auth-title">Claude usage</p>
-    <p class="auth-sub">Uses the claude.ai session you are already signed in to.</p>
+    <p class="auth-title">Claude Usage Monitor</p>
+    <p class="auth-sub">Reads your existing claude.ai session</p>
 
     <div class="auth-error" id="auth-error"></div>
 
@@ -508,7 +536,9 @@
       </svg>
     </button>
 
-    <p class="auth-foot">No API key needed. The only site this reads is claude.ai.</p>
+    <p class="auth-foot">No API key needed</p>
+
+    </div><!-- /auth-col -->
 
   </div><!-- /auth-view -->
 
@@ -522,7 +552,7 @@
     <div class="header">
       <div class="header-left">
         <img class="logo-sm" src="claude-logo.svg" alt="Claude" />
-        <span class="header-title">Claude Session Monitor</span>
+        <span class="header-title">Claude Usage Monitor</span>
       </div>
 
       <div class="header-controls">

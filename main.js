@@ -5,7 +5,7 @@ const fs = require('fs')
 // Set app name BEFORE app.ready so safeStorage uses the same identity
 // in both dev (npm start) and production (built .app). Must match productName
 // in package.json — this is what macOS Keychain keys the encryption against.
-app.setName('Claude Usage Widget')
+app.setName('Claude Usage Monitor')
 
 // ─── Single instance lock ─────────────────────────────────────────────────────
 // If a second copy tries to launch, focus the existing window and quit the new one.
@@ -1065,9 +1065,9 @@ function updateTrayTitle() {
   tray.setImage(buildTrayIcon(pct))
   tray.setTitle('')
   if (pct != null) {
-    tray.setToolTip(`Claude Session Monitor ${ver} · Session ${pct}%`)
+    tray.setToolTip(`Claude Usage Monitor ${ver} · Session ${pct}%`)
   } else {
-    tray.setToolTip(`Claude Session Monitor ${ver}`)
+    tray.setToolTip(`Claude Usage Monitor ${ver}`)
   }
 }
 
@@ -1143,13 +1143,13 @@ function rebuildTrayMenu() {
       ]
     },
     { type: 'separator' },
-    { label: 'Quit Claude Session Monitor', click: () => app.quit() }
+    { label: 'Quit Claude Usage Monitor', click: () => app.quit() }
   ]))
 }
 
 function createTray() {
   tray = new Tray(buildTrayIcon(null))
-  tray.setToolTip(`Claude Session Monitor v${app.getVersion()}`)
+  tray.setToolTip(`Claude Usage Monitor v${app.getVersion()}`)
   rebuildTrayMenu()
   // tray click intentionally does nothing — use the right-click menu to show/hide
 }
