@@ -1,6 +1,6 @@
 {
   "name": "claude-usage-widget",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "macOS desktop widget for monitoring Anthropic/Claude usage",
   "main": "main.js",
   "author": "takeem",
@@ -31,19 +31,12 @@
       },
       "target": [
         {
-          "target": "dmg",
+          "target": "zip",
           "arch": [
-            "universal"
+            "arm64"
           ]
         }
       ]
-    },
-    "dmg": {
-      "title": "Claude Usage Monitor",
-      "window": {
-        "width": 540,
-        "height": 380
-      }
     }
   },
   "devDependencies": {
