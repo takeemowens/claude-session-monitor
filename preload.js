@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Window controls
   toggleAlwaysOnTop: ()      => ipcRenderer.invoke('toggle-always-on-top'),
   setWindowHeight:   (h)     => ipcRenderer.invoke('set-window-height', h),
+  // width null → restore the default popover width, owned by main
+  setWindowSize:     (w, h)  => ipcRenderer.invoke('set-window-size', w, h),
   closeWindow:       ()      => ipcRenderer.invoke('close-window'),
   openExternal:      (url)   => ipcRenderer.invoke('open-external', url)
 })

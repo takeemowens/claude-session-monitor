@@ -42,11 +42,25 @@ function measureAuthHeight() {
   )
 }
 
+// Same rule on the other axis: the column is as wide as its widest element and
+// the window is that plus padding, rather than the content floating inside a
+// fixed 460 with dead space either side.
+function measureAuthWidth() {
+  const view = document.getElementById('auth-view')
+  const col  = view && view.querySelector('.auth-col')
+  if (!col) return null   // null → main restores the default width
+  const cs = getComputedStyle(view)
+  return Math.ceil(
+    col.getBoundingClientRect().width +
+    parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight)
+  )
+}
+
 // The display face is font-display:block, so the first paint is invisible text
 // at fallback metrics. Measuring then locks in the wrong height.
 function sizeAuthWindow() {
   const apply = () => requestAnimationFrame(
-    () => window.electronAPI.setWindowHeight(measureAuthHeight())
+    () => window.electronAPI.setWindowSize(measureAuthWidth(), measureAuthHeight())
   )
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(apply)
   else apply()
@@ -112,7 +126,11 @@ function showDashboard() {
   document.getElementById('details-panel').classList.remove('open')
   document.getElementById('btn-expand').classList.remove('open')
   document.getElementById('expand-label').textContent = 'Show more'
-  requestAnimationFrame(() => window.electronAPI.setWindowHeight(measureDashboardHeight()))
+  // null width restores the default: the auth view narrows the window to its
+  // own content, and the dashboard needs the full popover back.
+  requestAnimationFrame(
+    () => window.electronAPI.setWindowSize(null, measureDashboardHeight())
+  )
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────

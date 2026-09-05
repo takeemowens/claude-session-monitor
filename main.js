@@ -1185,11 +1185,13 @@ function setupGlobalHotkey() {
 let win = null
 let watchDebounce = null
 
+// Module scope so the resize handlers can restore the default width after the
+// auth view has narrowed the window to fit its own content.
+const WIN_W = 460
+const WIN_H = 198
+
 function createWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize
-
-  const WIN_W = 460
-  const WIN_H = 198
 
   win = new BrowserWindow({
     width: WIN_W,
@@ -1306,9 +1308,20 @@ ipcMain.handle('toggle-always-on-top', () => {
 
 ipcMain.handle('set-window-height', (_, h) => {
   if (!win) return
-  const clamped = Math.max(100, Math.min(800, Number(h) || 198))
+  const clamped = Math.max(100, Math.min(800, Number(h) || WIN_H))
   const { x, y, width } = win.getBounds()
   win.setBounds({ x, y, width, height: clamped }, true)
+})
+
+// Pass width null to restore the default. The popover is anchored to the right
+// edge of the screen, so x has to move by the width delta: resizing from the
+// left only would walk the window away from that edge.
+ipcMain.handle('set-window-size', (_, w, h) => {
+  if (!win) return
+  const height = Math.max(100, Math.min(800, Number(h) || WIN_H))
+  const width  = Math.max(240, Math.min(900, Number(w) || WIN_W))
+  const b = win.getBounds()
+  win.setBounds({ x: b.x + (b.width - width), y: b.y, width, height }, true)
 })
 
 ipcMain.handle('close-window', () => {

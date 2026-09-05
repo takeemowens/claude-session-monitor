@@ -26,8 +26,10 @@
       font-display: block;
     }
 
+    /* Fluid, not a fixed 460: the window is the source of truth for width and
+       the shell follows it, so the auth view can size itself to its content. */
     html, body {
-      width: 460px;
+      width: 100%;
       height: 100%;
       overflow: hidden;
       background: transparent;
@@ -90,7 +92,7 @@
 
     /* ── App shell ───────────────────────────────────────────────────────────── */
     #app {
-      width: 460px;
+      width: 100%;
       height: 100%;
       background: transparent;
       position: relative;
@@ -157,14 +159,16 @@
     #auth-view button,
     #auth-view a { -webkit-app-region: no-drag; }
 
-    /* Narrow centred column. The popover is a fixed 460px, so the tall
-       proportions have to come from constraining the content, not the frame.
+    /* 280 is set by the widest thing on the screen: the title measures 270 in
+       Special Gothic Expanded One. The window is then sized to this plus the
+       view's padding, so the frame fits the content rather than the content
+       floating in a fixed frame.
 
        Every vertical gap below is a multiple of 8, and each step up marks a
        bigger break: 16 ties the caption to the button it describes, 24
        separates the mark from the name, 32 sets off the one decision. */
     .auth-col {
-      width: 300px;
+      width: 280px;
       display: flex;
       flex-direction: column;
       align-items: center;
