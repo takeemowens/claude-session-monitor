@@ -407,7 +407,7 @@ async function scrapeConsoleUsage() {
     // Cache for debugging
     try {
       const cachePath = require('path').join(AUTH_DIR, 'console_cache.json')
-      require('fs').writeFileSync(cachePath, JSON.stringify(result, null, 2))
+      require('fs').writeFileSync(cachePath, JSON.stringify(result, null, 2), { mode: 0o600 })
     } catch (e) {}
 
     return result
@@ -900,14 +900,15 @@ async function refreshAndPush() {
       // Cache the raw scrape
       try {
         const cachePath = path.join(AUTH_DIR, 'console_cache.json')
-        fs.writeFileSync(cachePath, JSON.stringify(scraped, null, 2))
+        fs.writeFileSync(cachePath, JSON.stringify(scraped, null, 2), { mode: 0o600 })
       } catch (e) { console.error('[refresh] Cache write failed:', e.message) }
       console.log('[refresh] Console scrape successful')
     }
 
     // Also fetch API rate limits — throttled to every 5 min (costs real tokens)
-    const apiKey = getStoredKey()
-    console.log(`[api] key present: ${!!apiKey}, lastPing: ${Math.round((Date.now()-lastApiPing)/1000)}s ago`)
+    // Disabled by default: the console scrape above is free and covers the same
+    // numbers. Flip API_PING_ENABLED to true only if you want the paid fallback.
+    const apiKey = API_PING_ENABLED ? getStoredKey() : null
     if (apiKey && (Date.now() - lastApiPing >= API_PING_INTERVAL)) {
       console.log('[api] Pinging Anthropic API...')
       const apiLive = await fetchLiveData(apiKey)
@@ -936,6 +937,7 @@ async function refreshAndPush() {
 // ─── Auto-refresh timer ───────────────────────────────────────────────────────
 const REFRESH_INTERVAL  = 60 * 1000        // 1 min — console scrape cadence
 const API_PING_INTERVAL = 5 * 60 * 1000    // 5 min — Anthropic API (costs tokens)
+const API_PING_ENABLED  = false            // paid API fallback — off; scrape is free
 let lastApiPing = 0
 let refreshTimer = null
 let refreshLock = false
