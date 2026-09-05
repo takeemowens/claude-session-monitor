@@ -26,6 +26,9 @@
     "mac": {
       "category": "public.app-category.utilities",
       "icon": "assets/icon.icns",
+      "extendInfo": {
+        "LSUIElement": true
+      },
       "target": [
         {
           "target": "dmg",
