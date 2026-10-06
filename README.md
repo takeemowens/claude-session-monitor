@@ -1,6 +1,6 @@
 # Claude Usage Monitor
 
-A minimal macOS menu-bar widget for monitoring your Anthropic and Claude usage: session limits, weekly quota, extra spend, and account balance. Always-on-top, collapsible, and live-updating.
+A minimal macOS menu bar widget for watching your Claude usage: the 5-hour session limit and the 7-day weekly quota, live, with a ring in the menu bar that fills as you go. Click the ring to open the panel. No API key, no account setup: it reads the claude.ai session you are already signed in to.
 
 ![Claude Usage Monitor](claude-usage.png)
 
@@ -8,9 +8,9 @@ A minimal macOS menu-bar widget for monitoring your Anthropic and Claude usage: 
 
 ## Requirements
 
-- macOS 12 or later
-- Node.js 18 or later (for building from source)
-- An Anthropic API key, or a signed-in `claude.ai` session in Chrome
+- macOS 12 or later, Apple Silicon
+- Google Chrome signed in to claude.ai (the widget reads one cookie from it, once, locally)
+- Node.js 18 or later, only if building from source
 
 ---
 
@@ -24,48 +24,45 @@ cp usage_config.example.json usage_config.json
 npm start
 ```
 
-On first launch you can authenticate two ways:
+On first launch the widget looks for an existing claude.ai session in Chrome and connects on its own. If it cannot, it shows a single Connect button that does the same thing on demand.
 
-1. **Anthropic API key.** Paste your key when prompted. It is validated once, then stored encrypted on your machine at `~/.claude-widget/auth.json`. It is never transmitted anywhere except `api.anthropic.com`, and never committed to this repo.
-2. **Sign in with Claude.ai.** Use the in-app login window, or import your existing session from Chrome. See [SECURITY.md](SECURITY.md) for exactly what the Chrome import reads.
-
----
-
-## Updating Usage Data
-
-Edit `usage_config.json` in the project root. The widget watches the file and updates live, with no restart needed.
-
-```json
-{
-  "session": { "used_percent": 68, "resets_in_hours": 3, "resets_in_minutes": 24 },
-  "weekly":  { "used_percent": 42, "reset_day": "Fri", "reset_time": "12:00 PM" },
-  "extra_usage": { "total_spent": 10.62, "monthly_limit": 10.00 },
-  "balance": { "current": 0.58, "auto_reload": false, "reload_amount": 10.00, "reload_threshold": 5.00 },
-  "last_updated": "2026-03-21T20:00:00Z"
-}
-```
+Signing out from the panel removes the stored session and returns you to that screen.
 
 ---
 
-## Build for Distribution
+## What it shows
 
-Build a universal `.dmg` (Apple Silicon and Intel):
+- **Current session**: percentage of the rolling 5-hour window used, and when it resets
+- **Weekly, all models**: percentage of the 7-day quota used, and when it resets
+- **Menu bar ring**: green under 80%, amber from 80, red from 90, with the number inside
+- **Active sessions** in the ring's tooltip: how many Claude Code sessions are running on this Mac right now
+- A notification when usage climbs unusually fast, and at the 80, 90 and 100 marks
+
+Extra usage and balance appear only when your account has extra usage enabled, since there is no free source for them otherwise.
+
+The timestamp in the footer turns clay when the data is more than five minutes old.
+
+---
+
+## Build
 
 ```bash
 npm install
-npm run build:universal
+npm run build:arm64
 ```
 
-Output lands in `dist/`.
+Output is `dist/Claude Usage Monitor-<version>-arm64-mac.zip`. Unzip, move the `.app` to `/Applications`, open it.
 
-**Important:** an unsigned build cannot be verified by macOS Gatekeeper, and a downloaded unsigned binary cannot be proven to be untampered. Do not distribute an unsigned `.dmg` to other people. For public distribution, sign and notarize with your own Apple Developer ID:
+`build:universal` exists but requires a working system Python for the universal binary step and is not the default.
+
+**Important:** an unsigned build cannot be verified by macOS Gatekeeper, and a downloaded unsigned binary cannot be proven to be untampered. Do not distribute an unsigned build to other people. For public distribution, sign and notarize with your own Apple Developer ID:
 
 ```bash
 export CSC_LINK="path/to/cert.p12"
 export CSC_KEY_PASSWORD="your-cert-password"
 export APPLE_ID="your@apple.id"
 export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
-npm run build:universal
+npm run build:arm64
 ```
 
 For your own machine or trusted testers, an unsigned build is fine: right-click the app and choose Open to bypass Gatekeeper on first launch.
@@ -74,13 +71,13 @@ For your own machine or trusted testers, an unsigned build is fine: right-click 
 
 ## Security
 
-The short version: nothing you provide leaves your machine except calls to Anthropic's own API.
+The short version: nothing leaves your machine except requests to `claude.ai`.
 
-- **API key** is encrypted via Electron `safeStorage` (OS keychain-backed), stored at `~/.claude-widget/auth.json` with owner-only permissions, outside the project directory.
+- **Chrome import** reads exactly one cookie, the `claude.ai` `sessionKey`, from Chrome's local cookie store. Nothing else in that store is read.
+- **Outbound requests** go only to `claude.ai`. No telemetry, analytics, or author-operated servers.
 - **Renderer isolation:** every window runs `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true`, exposing only a narrow `contextBridge` API.
-- **External URLs:** `shell.openExternal` is allowlisted to `anthropic.com` and `console.anthropic.com` over HTTPS only.
-- **Outbound requests:** limited to `api.anthropic.com` and, if you use the browser sign-in, `claude.ai`. No telemetry, analytics, or author-operated servers.
-- **Chrome cookie import** is optional and reads only the `claude.ai` `sessionKey` cookie, locally, and only if you choose it.
+- **Local files** under `~/.claude-widget/` are written with owner-only permissions.
+- **No Dock icon:** the app declares `LSUIElement` and lives in the menu bar only. Quit from the ring's right-click menu.
 
 Full disclosure of every local access and how to report an issue is in [SECURITY.md](SECURITY.md).
 

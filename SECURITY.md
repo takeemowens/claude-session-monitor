@@ -6,37 +6,47 @@ the app before you run it.
 
 ## What the app accesses locally
 
-- **macOS Keychain**, via Electron's `safeStorage`, to encrypt and decrypt
-  your Anthropic API key at rest. The app reads only the key it wrote itself.
-- **Your Anthropic API key**, stored encrypted at `~/.claude-widget/auth.json`
-  with `0600` file permissions (owner read/write only), outside the project
-  directory. It is never written to this repository.
-- **Google Chrome cookie database (optional)**, only if you explicitly choose
-  "Import from Chrome" during sign-in. The app reads a single `sessionKey`
-  cookie for `claude.ai` so you can authenticate without re-entering your
-  password. This read happens entirely on your machine. If you sign in through
-  the in-app login window instead, Chrome is never touched.
+- **Google Chrome's cookie store**, read once to pick up your existing
+  claude.ai sign-in. The read is a single SQL query scoped to one row: the
+  `sessionKey` cookie for `claude.ai`. Nothing else in the store is read.
+  Decrypting that one value uses Chrome's own Safe Storage key from the macOS
+  Keychain, which triggers a one-time system permission prompt. This happens
+  entirely on your machine.
+- **`~/.claude-widget/`**, where the app keeps a cache of the last usage
+  response and a short log of recent percentages (for the "climbing fast"
+  alert). Both files are written with `0600` permissions, owner read/write
+  only, outside the project directory.
+- **The process list** (`ps`), once per refresh, to count how many Claude Code
+  sessions are running on this Mac. Only the count is used.
 
 ## What leaves your machine
 
-- **Anthropic API only.** After you provide an API key, the app makes HTTPS
-  requests to `api.anthropic.com` (usage and account data) and, if you sign
-  in through the browser flow, to `claude.ai`. Nothing else.
+- **`claude.ai` only.** The app makes HTTPS requests to `claude.ai` to read
+  your session and weekly usage. Nothing else.
 - **No telemetry, analytics, or third-party endpoints.** There is no crash
-  reporting, no usage tracking, and no server operated by the author. Your key
-  and your usage data never pass through any machine other than your own and
-  Anthropic's.
+  reporting, no usage tracking, and no server operated by the author. Your
+  session cookie and your usage data never pass through any machine other
+  than your own and Anthropic's.
 
 ## How the app is hardened
 
 - Every renderer window runs with `nodeIntegration: false`,
   `contextIsolation: true`, and `sandbox: true`. Renderer code cannot reach
   Node or the OS except through a narrow, explicit `contextBridge` API.
-- `shell.openExternal` is allowlisted to `anthropic.com` and
-  `console.anthropic.com` over HTTPS only, so the app cannot be induced to
-  open arbitrary links.
-- The local control server used during development binds to `127.0.0.1` and is
-  never included in packaged builds (it loads only when the app is unpackaged).
+- The renderer's Content Security Policy sets `connect-src 'none'`: the UI
+  itself cannot make network requests at all. All fetching happens in the
+  main process.
+- `shell.openExternal` is allowlisted to Anthropic domains over HTTPS only.
+- The app declares `LSUIElement` and takes a single-instance lock: one copy,
+  menu bar only, no Dock icon.
+- The local control server used during development binds to `127.0.0.1` and
+  is never included in packaged builds (it loads only when unpackaged).
+
+## Signing out
+
+Sign out (from the panel or the ring's right-click menu) removes the stored
+session cookie from the app, deletes the local cache and log, and returns the
+app to its connect screen. Your Chrome session is not touched.
 
 ## Verifying before you run
 
@@ -55,11 +65,11 @@ The files worth reading first are `main.js` (all privileged operations) and
 
 ## A note on prebuilt binaries
 
-Any `.dmg` produced by `npm run build` is **unsigned** unless you supply your
-own Apple Developer credentials. An unsigned app cannot be verified by macOS
-Gatekeeper, and a downloaded unsigned binary cannot be proven to be untampered.
-For that reason, no prebuilt binary is published here. Build from source, or
-sign and notarize your own build with an Apple Developer ID before
+Any build produced by `npm run build:arm64` is **unsigned** unless you supply
+your own Apple Developer credentials. An unsigned app cannot be verified by
+macOS Gatekeeper, and a downloaded unsigned binary cannot be proven to be
+untampered. For that reason, no prebuilt binary is published here. Build from
+source, or sign and notarize your own build with an Apple Developer ID before
 distributing it to others.
 
 ## Reporting a vulnerability

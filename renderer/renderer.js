@@ -4,17 +4,20 @@ let isDark = false
 let isExpanded = false
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
-function applyTheme(dark) {
+function applyTheme(dark, { persist = true } = {}) {
   isDark = dark
+  if (persist) { try { localStorage.setItem('theme', dark ? 'dark' : 'light') } catch (e) {} }
   document.getElementById('app').classList.toggle('dark', dark)
   document.getElementById('icon-moon').style.display = dark ? 'none'  : 'block'
   document.getElementById('icon-sun').style.display  = dark ? 'block' : 'none'
 }
 
-// Auto-detect system preference and watch for changes
+// System appearance is the default; an explicit toggle wins and is remembered.
+// Storage reads are guarded: it can be unavailable in some contexts.
 const _mq = window.matchMedia('(prefers-color-scheme: dark)')
-applyTheme(_mq.matches)
-_mq.addEventListener('change', e => applyTheme(e.matches))
+function storedTheme() { try { return localStorage.getItem('theme') } catch (e) { return null } }
+applyTheme(storedTheme() ? storedTheme() === 'dark' : _mq.matches, { persist: false })
+_mq.addEventListener('change', e => { if (!storedTheme()) applyTheme(e.matches, { persist: false }) })
 
 // ─── Dynamic height measurement ──────────────────────────────────────────────
 function measureDashboardHeight() {
@@ -115,14 +118,27 @@ function showAuth() {
   sizeAuthWindow()
 }
 
+function setExpanded(open) {
+  isExpanded = open
+  try { localStorage.setItem('expanded', open ? '1' : '0') } catch (e) {}
+  document.getElementById('details-panel').classList.toggle('open', open)
+  document.getElementById('btn-expand').classList.toggle('open', open)
+  document.getElementById('expand-label').textContent = open ? 'Show less' : 'Show more'
+  document.getElementById('btn-expand').setAttribute('aria-expanded', String(open))
+  window.electronAPI.setWindowHeight(measureDashboardHeight())
+}
+
 function showDashboard() {
   document.getElementById('dashboard-view').classList.add('active')
   document.getElementById('auth-view').classList.remove('active')
-  // Reset expand state when switching to dashboard
-  isExpanded = false
-  document.getElementById('details-panel').classList.remove('open')
-  document.getElementById('btn-expand').classList.remove('open')
-  document.getElementById('expand-label').textContent = 'Show more'
+  // Restore the remembered expanded state rather than collapsing every time
+  let open = false
+  try { open = localStorage.getItem('expanded') === '1' } catch (e) {}
+  isExpanded = open
+  document.getElementById('details-panel').classList.toggle('open', open)
+  document.getElementById('btn-expand').classList.toggle('open', open)
+  document.getElementById('expand-label').textContent = open ? 'Show less' : 'Show more'
+  document.getElementById('btn-expand').setAttribute('aria-expanded', String(open))
   // null width restores the default: the auth view narrows the window to its
   // own content, and the dashboard needs the full popover back.
   requestAnimationFrame(
@@ -187,6 +203,11 @@ function renderDashboard(data) {
   renderExtra(data.extra_usage)
   renderDailyTokens(data.daily_tokens)
   renderFooter(data.balance, data.last_updated)
+  // Sections show or hide with the data, so the height measured at show time
+  // can be stale by the time the first payload lands. Re-fit after each render.
+  if (document.getElementById('dashboard-view').classList.contains('active')) {
+    requestAnimationFrame(() => window.electronAPI.setWindowHeight(measureDashboardHeight()))
+  }
 }
 
 // ─── Per-second countdown tick (free — no network) ───────────────────────────
@@ -246,6 +267,7 @@ function nextWeekdayDate(dayStr, timeStr) {
 function renderSession(s) {
   const pct = s.used_percent ?? 0
   document.getElementById('bar-session').style.width = `${Math.min(pct, 100)}%`
+  document.getElementById('bar-session').parentElement.setAttribute('aria-valuenow', String(Math.min(pct, 100)))
   document.getElementById('session-pct').textContent = `${pct}%`
 
   const h = s.resets_in_hours ?? 0
@@ -282,6 +304,7 @@ function renderWeekly(w) {
   }
   const pct = w.used_percent ?? 0
   document.getElementById('bar-weekly').style.width  = `${Math.min(pct, 100)}%`
+  document.getElementById('bar-weekly').parentElement.setAttribute('aria-valuenow', String(Math.min(pct, 100)))
   document.getElementById('weekly-pct').textContent  = pct > 0 ? `${pct}%` : '—'
 
   let resetLabel = '—'
@@ -312,14 +335,15 @@ function renderWeekly(w) {
 }
 
 function renderExtra(e) {
-  if (!e || e.total_spent == null || e.monthly_limit == null || e.monthly_limit === 0) {
-    document.getElementById('extra-meta').textContent = '—'
-    document.getElementById('extra-pct').textContent = '—'
-    document.getElementById('bar-extra').style.width = '0%'
-    document.getElementById('bar-extra').classList.remove('overflow')
-    document.getElementById('overflow-badge').classList.remove('show')
-    return
-  }
+  // No live source for this unless the account enables extra usage; hide the
+  // whole section rather than showing dashes that read like a zero balance.
+  const section = document.getElementById('extra-section')
+  const divider = document.getElementById('extra-divider')
+  const absent = !e || e.total_spent == null || e.monthly_limit == null || e.monthly_limit === 0
+  section.style.display = absent ? 'none' : ''
+  divider.style.display = absent ? 'none' : ''
+  if (absent) return
+  document.getElementById('bar-extra').parentElement.setAttribute('aria-valuenow', String(Math.min(Math.round((e.total_spent / e.monthly_limit) * 100), 100)))
 
   const pct        = (e.total_spent / e.monthly_limit) * 100
   const isOverflow = pct > 100
@@ -362,17 +386,33 @@ function formatTokens(n) {
 }
 
 function renderFooter(b, updatedISO) {
+  const balRow = document.getElementById('balance-row')
+  const reload = document.getElementById('auto-reload-text')
   if (!b || b.current == null) {
-    document.getElementById('balance').textContent = '—'
-    document.getElementById('auto-reload-text').textContent = ''
+    balRow.style.display = 'none'
+    reload.style.display = 'none'
   } else {
+    balRow.style.display = ''
+    reload.style.display = ''
     document.getElementById('balance').textContent = `$${b.current.toFixed(2)}`
     document.getElementById('auto-reload-text').textContent = b.auto_reload
       ? `Auto-reload $${b.reload_amount} at $${b.reload_threshold.toFixed(2)}`
       : 'Auto-reload off'
   }
   lastUpdatedISO = updatedISO
-  document.getElementById('last-updated').textContent = formatRelativeTime(updatedISO)
+  paintTimestamp()
+}
+
+// Five missed refresh cycles (REFRESH_INTERVAL is 60s) is unambiguous: the
+// number on screen is old, and a live monitor has to say so.
+const STALE_AFTER_MS = 5 * 60 * 1000
+function paintTimestamp() {
+  const el = document.getElementById('last-updated')
+  if (!el) return
+  el.textContent = formatRelativeTime(lastUpdatedISO)
+  const age = lastUpdatedISO ? Date.now() - new Date(lastUpdatedISO).getTime() : 0
+  el.classList.toggle('stale', age > STALE_AFTER_MS)
+  el.title = lastUpdatedISO ? new Date(lastUpdatedISO).toLocaleString() : ''
 }
 
 // ─── Dashboard controls ───────────────────────────────────────────────────────
@@ -400,13 +440,7 @@ function bindDashboardControls() {
 
 
   // Expand / collapse
-  document.getElementById('btn-expand').addEventListener('click', () => {
-    isExpanded = !isExpanded
-    document.getElementById('details-panel').classList.toggle('open', isExpanded)
-    document.getElementById('btn-expand').classList.toggle('open', isExpanded)
-    document.getElementById('expand-label').textContent = isExpanded ? 'Show less' : 'Show more'
-    window.electronAPI.setWindowHeight(measureDashboardHeight())
-  })
+  document.getElementById('btn-expand').addEventListener('click', () => setExpanded(!isExpanded))
 
   // Close
   document.getElementById('btn-close').addEventListener('click', () => {
@@ -469,9 +503,5 @@ function formatRelativeTime(isoString) {
 }
 
 function startTimestampTicker() {
-  setInterval(() => {
-    if (!lastUpdatedISO) return
-    const el = document.getElementById('last-updated')
-    if (el) el.textContent = formatRelativeTime(lastUpdatedISO)
-  }, 60_000)
+  setInterval(() => { if (lastUpdatedISO) paintTimestamp() }, 60_000)
 }

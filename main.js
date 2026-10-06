@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, safeStorage, shell, Tray, Menu, nativeImage, globalShortcut, session, Notification } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, safeStorage, shell, Tray, Menu, nativeImage, globalShortcut, session, Notification, nativeTheme } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -109,6 +109,7 @@ let firedNotifications = new Set()
 let muteNotifications = false
 let prevSessionPct = null
 let CONSOLE_SESSION = null
+let lastGoodOrgId = null   // the membership whose /usage endpoint last answered
 
 const CONSOLE_USAGE_URL = 'https://claude.ai/settings/usage'
 
@@ -384,10 +385,13 @@ async function scrapeConsoleUsage() {
         rebuildTrayMenu()
         if (!getStoredKey()) stopRefreshTimer()
         console.log('[scraper] Session expired (401/403)')
+        // Without this the dashboard sat on its last numbers indefinitely; the
+        // only tell was the timestamp quietly aging.
+        if (win && !win.isDestroyed()) win.webContents.send('show-auth-view')
         if (wasLoggedIn && Notification.isSupported()) {
           new Notification({
             title: 'Claude session expired',
-            body: 'Sign into claude.ai in Chrome, then use Account → Import from Chrome.',
+            body: 'Open the widget and connect again.',
             silent: false
           }).show()
         }
@@ -406,26 +410,37 @@ async function scrapeConsoleUsage() {
       console.log('[scraper] Could not find org ID in bootstrap:', JSON.stringify(bootstrap).slice(0, 200))
       return null
     }
-    // Get the account org ID (may differ from bootstrap org ID)
+    // Accounts can belong to several orgs, and usage is only readable on the
+    // one the session actually has rights to. Picking memberships[0] broke the
+    // moment a second org appeared first in the list (403 "Invalid
+    // authorization for organization"). Try every membership, last-known-good
+    // first, and remember whichever answers.
     const accountRes = await ses.fetch(`${BASE}/api/account`, { headers: HEADERS })
     const accountData = accountRes.ok ? await accountRes.json() : null
-    const accountOrgId = accountData?.memberships?.[0]?.organization?.uuid
+    const candidates = [
+      lastGoodOrgId,
+      ...(accountData?.memberships ?? []).map(m => m?.organization?.uuid),
+      ...(bootstrap?.account?.memberships ?? []).map(m => m?.organization?.uuid),
+      orgId,
+    ].filter(Boolean)
 
-    // Fetch usage data — /api/organizations/${accountOrgId}/usage returns session + weekly utilization
     let usageBody = null
-    for (const oid of [...new Set([accountOrgId, orgId].filter(Boolean))]) {
+    for (const oid of [...new Set(candidates)]) {
       const r = await ses.fetch(`${BASE}/api/organizations/${oid}/usage`, { headers: HEADERS })
       if (r.ok) {
         usageBody = await r.json()
-        console.log('[scraper] Usage data fetched successfully')
+        lastGoodOrgId = oid
+        console.log(`[scraper] Usage data fetched successfully (org ${oid})`)
         break
       }
+      // A silent miss here is how a month-old break went unnoticed.
+      console.log(`[scraper] usage ${r.status} for org ${oid}: ${(await r.text()).slice(0, 160)}`)
     }
 
     const result = {
       source: 'session_fetch',
       ts: new Date().toISOString(),
-      orgId,
+      orgId: lastGoodOrgId ?? orgId,   // the org that actually answered
       usage: usageBody,
       raw: bootstrap
     }
@@ -788,10 +803,13 @@ function mergeData(base, live) {
   if (live.weekly) {
     out.weekly = { ...(base.weekly ?? {}), ...live.weekly }
   }
-  // Live spend estimate overrides manual
-  if (live.extra_usage) {
-    out.extra_usage = { ...(base.extra_usage ?? {}), ...live.extra_usage }
-  }
+  // Money sections have no free data source unless the account enables extra
+  // usage, and the paid API path is off. Never fall back to the config
+  // template here: the dashboard would render "$0.00 / $10.00" as if live.
+  delete out.extra_usage
+  delete out.balance
+  if (live.extra_usage) out.extra_usage = live.extra_usage
+  if (live.balance)     out.balance     = live.balance
   if (live.rate_limits)  out.rate_limits  = live.rate_limits
   if (live.daily_tokens) out.daily_tokens = live.daily_tokens
 
@@ -1020,6 +1038,13 @@ async function refreshAndPush() {
       if (apiLive.extra_usage && !live.extra_usage) live.extra_usage = apiLive.extra_usage
     }
 
+    // No live session data means the refresh failed somewhere upstream. Keep
+    // what we have rather than pushing the config template's zeros stamped
+    // "updated just now"; the footer timestamp then ages and goes stale.
+    if (!live.session && latestData?.session) {
+      console.log('[refresh] No live usage this cycle; keeping previous data')
+      return latestData
+    }
     const merged = mergeData(base, live)
     merged.active_sessions = countActiveSessions()
     latestData = merged
@@ -1070,67 +1095,65 @@ const GLYPH = {
   '%': [0x18,0x19,0x02,0x04,0x08,0x13,0x03],
 }
 
+// Ring icon: a progress ring with the percentage inside, colored by level.
+// 36x36 @2x (18pt). Not a template image, since it carries color; digit color
+// follows the menu bar tint via nativeTheme instead. At 100 the ring is full
+// and the digits are omitted: three digits do not fit a 12pt inner circle, and
+// a closed red ring already says "full". The tooltip carries the exact number.
 function buildTrayIcon(pct) {
-  const text = pct != null ? `${Math.round(pct)}%` : ''
-  // Asterisk: 16px wide area. Text: 7px per char. Gap: 2px. Pad: 2px each side.
-  const charW = 6, charH = 7, scale = 2
-  const sCharW = charW * scale, sCharH = charH * scale
-  const asteriskSize = 32  // 16pt @2x
-  const gap = text ? 2 : 0
-  const textW = text ? text.length * sCharW : 0
-  const w = asteriskSize + gap + textW + 2
-  const h = 32  // 16pt @2x
-  const buf = Buffer.alloc(w * h * 4, 0)
+  const size = 36, cx = 18, cy = 18
+  const rOuter = 17, rInner = 12
+  const buf = Buffer.alloc(size * size * 4, 0)
 
-  const setPixel = (x, y, alpha) => {
-    const ix = Math.floor(x), iy = Math.floor(y)
-    if (ix < 0 || ix >= w || iy < 0 || iy >= h) return
-    const i = (iy * w + ix) * 4
-    buf[i + 3] = Math.max(buf[i + 3], Math.round(alpha * 255))
+  const level = pct == null ? null : pct >= 90 ? [255, 69, 58] : pct >= 80 ? [255, 159, 10] : [52, 199, 89]
+  const track = [128, 128, 128]
+  const dark  = nativeTheme.shouldUseDarkColors
+  const ink   = dark ? [255, 255, 255] : [28, 27, 25]
+
+  const put = (x, y, rgb, a) => {
+    if (x < 0 || x >= size || y < 0 || y >= size || a <= 0) return
+    const i = (y * size + x) * 4
+    const prev = buf[i + 3] / 255
+    const na = Math.min(1, prev + a * (1 - prev))
+    buf[i] = rgb[0]; buf[i + 1] = rgb[1]; buf[i + 2] = rgb[2]
+    buf[i + 3] = Math.round(na * 255)
   }
 
-  // Draw 6-arm asterisk on the left
-  const cx = asteriskSize / 2, cy = h / 2
-  const r = asteriskSize * 0.38, armW = 1.8
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < asteriskSize; x++) {
-      const dx = x - cx + 0.5, dy = y - cy + 0.5
-      let alpha = 0
-      for (let i = 0; i < 6; i++) {
-        const a = (i * Math.PI) / 3
-        const along = dx * Math.cos(a) + dy * Math.sin(a)
-        const perp = Math.abs(-dx * Math.sin(a) + dy * Math.cos(a))
-        if (Math.abs(along) < r && perp < armW)
-          alpha = Math.max(alpha, Math.min(1, armW - perp))
-      }
-      if (alpha > 0) setPixel(x, y, alpha)
+  const frac = pct == null ? 0 : Math.max(0, Math.min(1, pct / 100))
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cy
+      const d = Math.hypot(dx, dy)
+      // 1px anti-aliased band on both edges of the ring
+      const cover = Math.min(1, Math.max(0, rOuter + 0.5 - d)) * Math.min(1, Math.max(0, d - rInner + 0.5))
+      if (cover <= 0) continue
+      // angle from 12 o'clock, clockwise, 0..1
+      let ang = Math.atan2(dx, -dy) / (2 * Math.PI)
+      if (ang < 0) ang += 1
+      if (level && ang <= frac) put(x, y, level, cover)
+      else put(x, y, track, cover * 0.25)
     }
   }
 
-  // Draw percentage text to the right of the asterisk
-  if (text) {
-    const textX = asteriskSize + gap
-    const textY = Math.floor((h - sCharH) / 2)
+  if (pct != null && pct < 100) {
+    const text = String(Math.round(pct))
+    const scale = 2, gw = 5 * scale, gh = 7 * scale, gap = 1 * scale
+    const tw = text.length * gw + (text.length - 1) * gap
+    const x0 = Math.round(cx - tw / 2), y0 = Math.round(cy - gh / 2)
     for (let ci = 0; ci < text.length; ci++) {
       const glyph = GLYPH[text[ci]]
       if (!glyph) continue
-      for (let row = 0; row < charH; row++) {
-        for (let col = 0; col < 5; col++) {
-          if (glyph[row] & (1 << (4 - col))) {
-            // Draw scaled pixel block
-            for (let sy = 0; sy < scale; sy++) {
-              for (let sx = 0; sx < scale; sx++) {
-                setPixel(textX + ci * sCharW + col * scale + sx, textY + row * scale + sy, 1.0)
-              }
-            }
-          }
-        }
-      }
+      for (let row = 0; row < 7; row++)
+        for (let col = 0; col < 5; col++)
+          if (glyph[row] & (1 << (4 - col)))
+            for (let sy = 0; sy < scale; sy++)
+              for (let sx = 0; sx < scale; sx++)
+                put(x0 + ci * (gw + gap) + col * scale + sx, y0 + row * scale + sy, ink, 1)
     }
   }
 
-  const img = nativeImage.createFromBuffer(buf, { width: w, height: h, scaleFactor: 2.0 })
-  img.setTemplateImage(true)
+  const img = nativeImage.createFromBuffer(buf, { width: size, height: size, scaleFactor: 2.0 })
+  img.setTemplateImage(false)
   return img
 }
 
@@ -1144,6 +1167,7 @@ function toggleVisibility() {
     win.webContents.send('animate-out')
     setTimeout(() => { if (win && !win.isDestroyed()) { win.hide(); rebuildTrayMenu() } }, 220)
   } else {
+    positionUnderTray()
     win.show()
     win.focus()
     win.webContents.send('animate-in')
@@ -1151,13 +1175,19 @@ function toggleVisibility() {
   }
 }
 
-function showAuthScreen() {
-  if (!win) return
-  win.show()
-  win.focus()
-  win.webContents.send('show-auth-view')
-  rebuildTrayMenu()
+// Center the popover under its tray icon, clamped to the work area. Falls back
+// to the createWindow default (top-right) when the tray is unavailable.
+function positionUnderTray() {
+  if (!tray || !win) return
+  const b = tray.getBounds()
+  if (!b || !b.width) return
+  const area = screen.getDisplayNearestPoint({ x: b.x, y: b.y }).workArea
+  const { width: w, height: h } = win.getBounds()
+  const x = Math.max(area.x, Math.min(Math.round(b.x + b.width / 2 - w / 2), area.x + area.width - w))
+  const y = b.y + b.height + 6
+  win.setBounds({ x, y, width: w, height: h })
 }
+
 
 function updateTrayTitle() {
   if (!tray) return
@@ -1197,11 +1227,15 @@ function buildWeeklyStatusLabel(data) {
   return `Weekly ${pct}% · Resets ${resetPart}`
 }
 
-function rebuildTrayMenu() {
-  if (!tray || !win) return
+// The menu is built fresh on each right-click (see createTray), so there is
+// nothing to rebuild eagerly; call sites that refresh after state changes are
+// kept and simply no-op.
+function rebuildTrayMenu() {}
+
+function buildMenu() {
   const loginItem = app.getLoginItemSettings()
-  const isAuthed  = !!getStoredKey()
-  tray.setContextMenu(Menu.buildFromTemplate([
+  const isAuthed  = isLoggedInToConsole || !!getStoredKey()
+  return Menu.buildFromTemplate([
     { label: buildSessionStatusLabel(latestData), click: () => {} },
     { label: buildWeeklyStatusLabel(latestData),  click: () => {} },
     { type: 'separator' },
@@ -1235,26 +1269,23 @@ function rebuildTrayMenu() {
             }
           }
         },
-        { label: 'Open Config File', click: () => shell.openPath(path.join(__dirname, 'usage_config.json')) },
       ]
     },
-    {
-      label: 'Account',
-      submenu: [
-        { label: 'Change API Key…', click: () => showAuthScreen() },
-        ...(isAuthed ? [{ label: 'Sign Out', click: () => { stopRefreshTimer(); clearKey(); showAuthScreen() } }] : []),
-      ]
-    },
+    ...(isAuthed ? [{ label: 'Sign Out', click: () => signOut() }] : []),
     { type: 'separator' },
     { label: 'Quit Claude Usage Monitor', click: () => app.quit() }
-  ]))
+  ])
 }
 
 function createTray() {
   tray = new Tray(buildTrayIcon(null))
   tray.setToolTip(`Claude Usage Monitor v${app.getVersion()}`)
-  rebuildTrayMenu()
-  // tray click intentionally does nothing — use the right-click menu to show/hide
+  // No persistent context menu: on macOS that makes left-click open the menu.
+  // Left-click toggles the popover like every other menu bar app; the menu
+  // lives on right-click and is built on demand so its labels are current.
+  tray.on('click', toggleVisibility)
+  tray.on('right-click', () => tray.popUpContextMenu(buildMenu()))
+  nativeTheme.on('updated', updateTrayTitle)   // digit color follows the bar
 }
 
 // ─── Global hotkey (Option+Space) ─────────────────────────────────────────────
@@ -1291,6 +1322,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js')
     }
   })
@@ -1377,10 +1409,27 @@ ipcMain.handle('save-api-key', (_, apiKey) => {
   }
 })
 
-ipcMain.handle('sign-out', () => {
+// The old handler only deleted the API-key file, which the cookie-first UI can
+// no longer create, so "Sign out" was cosmetic: the cookie and
+// isLoggedInToConsole survived and the next launch logged straight back in.
+async function signOut() {
   stopRefreshTimer()
   clearKey()
-})
+  try {
+    await getConsoleSession().cookies.remove('https://claude.ai', 'sessionKey')
+  } catch (e) { console.error('[signout] Cookie remove failed:', e.message) }
+  for (const f of ['console_cache.json', 'usage_velocity_log.json']) {
+    try { fs.unlinkSync(path.join(AUTH_DIR, f)) } catch (e) {}
+  }
+  isLoggedInToConsole = false
+  latestData = null
+  firedNotifications.clear()
+  updateTrayTitle()
+  rebuildTrayMenu()
+  if (win && !win.isDestroyed()) win.webContents.send('show-auth-view')
+}
+
+ipcMain.handle('sign-out', () => signOut())
 
 ipcMain.handle('import-chrome-session', async () => {
   const ok = await importChromeSession()

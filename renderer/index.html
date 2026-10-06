@@ -8,8 +8,13 @@
     /* ── Reset ──────────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* Kill all focus rings — this is a widget, not a form */
-    *:focus, *:focus-visible, *:focus-within { outline: none !important; box-shadow: none !important; }
+    /* Only the drag chrome hides focus. Controls keep a visible ring: with no
+       Dock icon and no menu bar of its own, keyboard users have nothing else. */
+    #app:focus, .view:focus { outline: none; }
+    .ctrl-btn:focus-visible, .expand-btn:focus-visible, .signout-btn:focus-visible {
+      outline: 2px solid var(--clay);
+      outline-offset: 2px;
+    }
 
     /* Bundled locally rather than pulled from the Google Fonts CDN, so the
        app makes no network call outside claude.ai. Both are OFL 1.1. */
@@ -45,6 +50,12 @@
     /* ── Design tokens — light (default) ────────────────────────────────────── */
     :root {
       --sys: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      --display: 'Special Gothic Expanded One', var(--sys);
+      --label:   'Special Gothic', var(--sys);
+      /* Front-door palette, shared with the dashboard's dark theme */
+      --aground: #0F1621;
+      --at1:     #EEF2F7;
+      --at2:     #8695A8;
       --clay:       #D97757;
       --clay-hover: #C4663E;
       --clay-dim:   rgba(217,119,87,0.12);
@@ -141,9 +152,6 @@
     /* The front door is always dark, whatever theme the dashboard is in.
        It is a one-time screen, so it gets to be the dramatic moment. */
     #auth-view {
-      --aground: #0F1621;
-      --at1:     #EEF2F7;
-      --at2:     #8695A8;
 
       align-items: center;
       justify-content: center;
@@ -229,11 +237,8 @@
     .connect-btn:hover:not(:disabled)  { filter: brightness(1.07); }
     .connect-btn:active:not(:disabled) { transform: scale(0.985); }
     .connect-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
-    /* Needs !important to beat the global `*:focus-visible { outline: none }`
-       reset at the top of this file. This screen has exactly one control, so
-       keyboard users get nothing at all without a ring here. */
     .connect-btn:focus-visible {
-      outline: 2px solid #E8A44C !important;
+      outline: 2px solid #E8A44C;
       outline-offset: 2px;
     }
 
@@ -266,10 +271,11 @@
     .logo-sm { width: 22px; height: 22px; flex-shrink: 0; }
 
     .header-title {
-      font-size: 16px;
-      font-weight: 600;
+      font-family: var(--display);
+      font-size: 13px;
+      font-weight: 400;
       color: var(--t1);
-      letter-spacing: -0.4px;
+      letter-spacing: -0.1px;
     }
 
     .header-controls {
@@ -320,10 +326,11 @@
     }
 
     .section-label {
+      font-family: var(--label);
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 400;
       color: var(--t1);
-      letter-spacing: -0.2px;
+      letter-spacing: 0;
     }
 
     /* Holds the reset countdowns, which tick every minute. Without tabular
@@ -424,7 +431,7 @@
       flex-shrink: 0;
     }
 
-    .f-label   { font-size: 12px; color: var(--t2); }
+    .f-label   { font-family: var(--label); font-size: 12px; color: var(--t2); }
     .f-val     { color: var(--t1); font-weight: 500; font-variant-numeric: tabular-nums; }
     .f-muted   { font-size: 11px; color: var(--t3); }
 
@@ -435,7 +442,8 @@
       gap: 4px;
     }
 
-    .f-ts { font-size: 11px; color: var(--t3); }
+    .f-ts { font-size: 11px; color: var(--t3); font-variant-numeric: tabular-nums; }
+    .f-ts.stale { color: var(--clay); }
 
     .signout-btn {
       font-size: 11px;
@@ -443,7 +451,7 @@
       background: none;
       border: none;
       cursor: pointer;
-      font-family: inherit;
+      font-family: var(--label);
       padding: 0;
       transition: color 0.12s;
       -webkit-app-region: no-drag;
@@ -476,9 +484,9 @@
       border: none;
       cursor: pointer;
       color: var(--t3);
-      font-family: inherit;
+      font-family: var(--label);
       font-size: 12px;
-      letter-spacing: -0.1px;
+      letter-spacing: 0;
       padding: 5px 10px;
       border-radius: 8px;
       transition: color 0.12s;
@@ -543,7 +551,7 @@
 
       <div class="header-controls">
         <!-- Theme toggle -->
-        <button id="btn-theme" class="ctrl-btn" title="Toggle theme">
+        <button id="btn-theme" class="ctrl-btn" title="Toggle theme" aria-label="Toggle theme">
           <svg id="icon-moon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
           </svg>
@@ -556,7 +564,7 @@
           </svg>
         </button>
         <!-- Refresh -->
-        <button id="btn-refresh" class="ctrl-btn" title="Refresh">
+        <button id="btn-refresh" class="ctrl-btn" title="Refresh" aria-label="Refresh">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
             <path d="M21 3v5h-5"/>
@@ -565,7 +573,7 @@
           </svg>
         </button>
         <!-- Close -->
-        <button id="btn-close" class="ctrl-btn" title="Close">
+        <button id="btn-close" class="ctrl-btn" title="Close" aria-label="Close">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
             <path d="M18 6 6 18M6 6l12 12"/>
           </svg>
@@ -582,7 +590,7 @@
         <span class="section-meta" id="session-reset">—</span>
       </div>
       <div class="bar-row">
-        <div class="prog-track">
+        <div class="prog-track" role="progressbar" aria-label="Current session" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="prog-bar" id="bar-session"></div>
         </div>
         <span class="bar-pct" id="session-pct">—</span>
@@ -598,7 +606,7 @@
         <span class="section-meta" id="weekly-reset">—</span>
       </div>
       <div class="bar-row">
-        <div class="prog-track">
+        <div class="prog-track" role="progressbar" aria-label="Weekly, all models" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="prog-bar" id="bar-weekly"></div>
         </div>
         <span class="bar-pct" id="weekly-pct">—</span>
@@ -614,10 +622,10 @@
       <span class="f-muted" id="daily-snapshots" style="font-size:10px">—</span>
     </div>
 
-    <div class="divider"></div>
+    <div class="divider" id="extra-divider"></div>
 
     <!-- Extra Usage ───────────────────────────────────────────────────────── -->
-    <div class="section">
+    <div class="section" id="extra-section">
       <div class="section-head">
         <span class="section-label">Extra usage</span>
         <div class="extra-head-right">
@@ -626,7 +634,7 @@
         </div>
       </div>
       <div class="bar-row">
-        <div class="prog-track">
+        <div class="prog-track" role="progressbar" aria-label="Extra usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="prog-bar" id="bar-extra"></div>
         </div>
         <span class="bar-pct" id="extra-pct">—</span>
@@ -638,7 +646,7 @@
     <!-- Footer ────────────────────────────────────────────────────────────── -->
     <div class="footer">
       <div class="footer-left">
-        <div class="bal-row">
+        <div class="bal-row" id="balance-row">
           <span class="status-dot"></span>
           <span class="f-label">Balance <span class="f-val" id="balance">—</span></span>
         </div>
@@ -655,7 +663,7 @@
 
     <!-- Bottom bar ─────────────────────────────────────────────────────────── -->
     <div class="bottom-bar">
-      <button id="btn-expand" class="expand-btn">
+      <button id="btn-expand" class="expand-btn" aria-expanded="false" aria-controls="details-panel">
         <span id="expand-label">Show more</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9"/>

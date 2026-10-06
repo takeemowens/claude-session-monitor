@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy this to usage_config.json and fill in your values. No secrets stored here.",
+  "_comment": "Copy this to usage_config.json. Session and weekly are placeholders only: the live claude.ai scrape overrides them. No secrets stored here.",
   "session": {
     "used_percent": 0,
     "resets_in_hours": 0,
@@ -9,16 +9,6 @@
     "used_percent": 0,
     "reset_day": "Fri",
     "reset_time": "12:00 PM"
-  },
-  "extra_usage": {
-    "total_spent": 0.00,
-    "monthly_limit": 10.00
-  },
-  "balance": {
-    "current": 0.00,
-    "auto_reload": false,
-    "reload_amount": 10.00,
-    "reload_threshold": 5.00
   },
   "last_updated": null
 }

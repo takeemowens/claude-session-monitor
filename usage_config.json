@@ -10,15 +10,5 @@
     "reset_day": "",
     "reset_time": ""
   },
-  "extra_usage": {
-    "total_spent": 0.00,
-    "monthly_limit": 10.00
-  },
-  "balance": {
-    "current": 0.00,
-    "auto_reload": false,
-    "reload_amount": 0.00,
-    "reload_threshold": 0.00
-  },
   "last_updated": null
 }
